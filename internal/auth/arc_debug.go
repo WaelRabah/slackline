@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -111,7 +112,7 @@ type arcConnectFailure struct {
 
 func (e *arcConnectFailure) Error() string {
 	if e.status == 403 {
-		return "Arc rejected the debugging connection (HTTP 403). If no approval dialog appeared, this Arc build may not support the approval UI; use --arc-extension or select Chrome with --browser"
+		return "Arc rejected the debugging connection (HTTP 403). If no approval dialog appeared, this Arc build may not support the approval UI; select Chrome with --browser or use auth login --manual"
 	}
 	if e.status > 0 {
 		return fmt.Sprintf("Arc debugging returned HTTP %d; toggle remote debugging off and on, then retry", e.status)
@@ -119,7 +120,7 @@ func (e *arcConnectFailure) Error() string {
 	if e.unreachable {
 		return "Arc's debugging endpoint is no longer reachable; toggle remote debugging off and on, then retry"
 	}
-	return "Arc debugging connection failed before sign-in; retry or use --arc-extension / --manual"
+	return "Arc debugging connection failed before sign-in; retry, select another browser with --browser, or use auth login --manual"
 }
 
 var debugStatus = regexp.MustCompile(`unexpected status "([1-5][0-9]{2})\b`)
@@ -145,7 +146,7 @@ func arcChromeFallback(err error, explicit string) bool {
 
 func arcLogin(ctx context.Context, startURL string) (slack.Credentials, error) {
 	paths := arcEndpointFiles(userHome())
-	fmt.Println("Arc login uses browser-approved remote debugging; no extension is required.")
+	fmt.Println("Arc login uses browser-approved remote debugging.")
 	if _, err := readDebugEndpoint(paths); errors.Is(err, os.ErrNotExist) {
 		fmt.Println("In Arc, enable ‘Allow remote debugging for this browser instance’ at " + arcInspectURL + ".")
 		if err := openLittleArc(ctx, arcInspectURL); err != nil {
@@ -154,7 +155,7 @@ func arcLogin(ctx context.Context, startURL string) (slack.Credentials, error) {
 	}
 	endpoint, err := waitDebugEndpoint(ctx, paths)
 	if err != nil {
-		return slack.Credentials{}, browserError(ctx, "Arc debugging is unavailable; enable it at "+arcInspectURL+", or use --arc-extension / --manual")
+		return slack.Credentials{}, browserError(ctx, "Arc debugging is unavailable; enable it at "+arcInspectURL+", select another browser with --browser, or use auth login --manual")
 	}
 	fmt.Println("Requesting a connection to Arc. Approve Arc’s debugging dialog to continue; Ctrl+C cancels.")
 	browser, detach := attachBrowser(ctx, endpoint)
@@ -177,4 +178,20 @@ func arcLogin(ctx context.Context, startURL string) (slack.Credentials, error) {
 	}
 	fmt.Println("Slack session captured. Disconnecting from Arc; your browser and tabs stay open.")
 	return creds, nil
+}
+
+func openLittleArc(ctx context.Context, rawURL string) error {
+	// Arc's application-level tab collection creates a Little Arc popup.
+	const script = `on run argv
+  tell application "Arc"
+   make new tab with properties {URL:item 1 of argv}
+   activate
+  end tell
+ end run`
+	commandCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	if err := exec.CommandContext(commandCtx, "/usr/bin/osascript", "-e", script, rawURL).Run(); err != nil {
+		return errors.New("cannot open Little Arc; allow terminal automation of Arc, or select another browser with --browser")
+	}
+	return nil
 }

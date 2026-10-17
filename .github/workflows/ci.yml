@@ -24,9 +24,6 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: '24'
       - name: Check formatting
         run: test -z "$(gofmt -l cmd internal)"
       - name: Verify dependencies
@@ -35,8 +32,6 @@ jobs:
         run: go test -race ./...
       - name: Vet
         run: go vet ./...
-      - name: Test optional browser helper
-        run: node --test browser-extension/tests/background.test.cjs
       - name: Test curl installer
         run: python3 -m unittest discover -s tests -p 'test_*.py' -v
       - name: Build and smoke-test

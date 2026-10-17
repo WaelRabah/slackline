@@ -98,7 +98,7 @@ Run `./bin/slackline auth login`. On macOS the client prefers your compatible sy
 
 **Arc limitation confirmed on this Mac:** Arc 1.166.0 / Chromium 154 publishes a working loopback endpoint after enabling `arc://inspect/#remote-debugging`, but immediately returns **HTTP 403: Connection rejected**, without showing an approval dialog. The settings checkbox alone does not establish support for the complete approval flow. Bringing Arc to the foreground did not resolve it. The missing approval UI appears to be an Arc integration limitation; the exact Arc-side cause is unconfirmed.
 
-Default `auth login` now detects that rejection and opens an installed Chrome/Chromium/Brave/Edge temporary login window instead. No extension is needed and your system default stays Arc. Errors distinguish HTTP rejection from an unreachable/stale endpoint, cancellation, and other transport failures; raw endpoints and response bodies stay private. Explicit `--browser /Applications/Arc.app/Contents/MacOS/Arc` preserves the choice and returns the Arc error instead of switching browsers. Ctrl+C cancellation never triggers fallback.
+Default `auth login` now detects that rejection and opens an installed Chrome/Chromium/Brave/Edge temporary login window instead. Your system default stays Arc. Errors distinguish HTTP rejection from an unreachable/stale endpoint, cancellation, and other transport failures; raw endpoints and response bodies stay private. Explicit `--browser /Applications/Arc.app/Contents/MacOS/Arc` preserves the choice and returns the Arc error instead of switching browsers. Ctrl+C cancellation never triggers fallback.
 
 To skip the Arc attempt entirely:
 
@@ -108,11 +108,9 @@ To skip the Arc attempt entirely:
 
 For an Arc build that implements approval dialogs, `auth login` can still attach to its running instance: enable **Allow remote debugging for this browser instance** at `arc://inspect/#remote-debugging`, approve the connection, then sign into Slack in the new Little Arc window. The client captures only Slack tabs created during this login and disconnects without closing Arc or its tabs. It reads only published `DevToolsActivePort` connection metadata and accesses Slack through the approved browser connection; it does not read cookie/password databases or browser storage files. This connection mode was introduced in [Chrome 144](https://developer.chrome.com/blog/chrome-devtools-mcp-debug-your-browser-session), but Arc's UI implementation must also support it.
 
-The old helper remains an explicit fallback: `auth login --arc-extension`. For that mode, enable Developer mode at `arc://extensions`, load this project's `browser-extension` folder unpacked, and click **Connect Slack** on the local login page. The extension posts directly to a one-time loopback callback. Neither flow puts credentials in URLs or terminal output.
-
 Chrome, Chromium, Brave, and Edge use a fresh temporary profile without accessing your normal browser profile. That temporary profile is removed when login finishes or is cancelled. Use `--browser /path/to/browser-executable` to override selection, or `--timeout 15m` to change the default 10-minute wait. Run browser login on the host, rather than in the development container.
 
-A normal redirect to localhost cannot carry Slack's session cookie: cookies are restricted to their domain, and `HttpOnly` cookies cannot be read by page JavaScript. The isolated browser flow reads the cookie locally through DevTools over a private pipe; the default Arc flow uses its explicitly approved local debugging connection. The optional extension flow uses a one-time local POST callback. Credentials are never put into callback URLs, browser history, or terminal output. An OAuth redirect would be a separate app-based authentication flow and would not provide this `xoxc`/`d` pair. See [browser cookie rules](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie).
+The isolated browser flow reads the cookie locally through DevTools over a private pipe; the default Arc flow uses its explicitly approved local debugging connection. Credentials are never put into URLs, browser history, or terminal output. An OAuth redirect would be a separate app-based authentication flow and would not provide this `xoxc`/`d` pair. See [browser cookie rules](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie).
 
 Some SSO providers or workspace policies may reject a controlled browser. Use the manual fallback in that case:
 
@@ -125,7 +123,7 @@ Some SSO providers or workspace policies may reject a controlled browser. Use th
 3. In **Application / Storage → Cookies**, copy the value of the cookie named exactly `d` for the Slack domain.
 4. Paste both values into the hidden terminal prompts. They must come from the same session.
 
-The cookie may start with `xoxd-` and contain percent escapes: paste its exact value without decoding it. A leading `d=` is accepted. Do not paste a full Cookie header. If a session expires or is revoked, repeat login. The existing Arc session is accessed only through browser-approved debugging or the explicitly chosen helper. Direct extraction from browser profile databases or the Slack desktop app is not implemented.
+The cookie may start with `xoxd-` and contain percent escapes: paste its exact value without decoding it. A leading `d=` is accepted. Do not paste a full Cookie header. If a session expires or is revoked, repeat login. The existing Arc session is accessed only through browser-approved debugging. Direct extraction from browser profile databases or the Slack desktop app is not implemented.
 
 Existing installations automatically reuse `~/.config/slack_in_term/config.toml` (and its adjacent state) until a new Slackline config is created. No credentials need to be copied or re-entered for the rename.
 
@@ -212,8 +210,6 @@ SLACKLINE_TEST_BROWSER="/Applications/Google Chrome.app/Contents/MacOS/Google Ch
 
 Authentication reference: [Slackdump manual session authentication](https://github.com/rusq/slackdump/blob/master/doc/login-manual.md). API references: [users.conversations](https://docs.slack.dev/reference/methods/users.conversations/), [conversations.history](https://docs.slack.dev/reference/methods/conversations.history/), [chat.postMessage](https://docs.slack.dev/reference/methods/chat.postMessage/).
 
-The Arc extension callback and background worker have separate checks: `go test ./internal/auth` and `node --test browser-extension/tests/background.test.cjs`.
-
 An opt-in, receive-only live-session check is separate from ordinary tests. It reports only connection success and event counts, never message contents or socket URLs. On this Mac:
 
 ```sh
@@ -225,7 +221,7 @@ The heartbeat check observes the connection for 45 seconds, without sending Slac
 
 ## CI and releases
 
-[CI](.github/workflows/ci.yml) runs on pushes to `main`, pull requests, and manual requests. It checks formatting, module integrity, race tests, vet, helper-extension tests, and a native build on macOS and Linux. It never uses a real Slack session or inference provider.
+[CI](.github/workflows/ci.yml) runs on pushes to `main`, pull requests, and manual requests. It checks formatting, module integrity, race tests, vet, curl-installer tests, and a native build on macOS and Linux. It never uses a real Slack session or inference provider.
 
 [Release packages](.github/workflows/release.yml) builds all four macOS/Linux × amd64/arm64 targets, Linux `.deb` and `.rpm` packages, and macOS `.pkg` installers, then verifies SHA-256 checksums. The app is built with `CGO_ENABLED=0`, so Linux downloads do not require a specific glibc version. GoReleaser and Actions are pinned to specific versions/commits.
 

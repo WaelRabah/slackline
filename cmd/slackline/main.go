@@ -125,7 +125,6 @@ type loginOptions struct {
 func parseLoginOptions(args []string) (loginOptions, error) {
 	var opts loginOptions
 	flags := flag.NewFlagSet("auth login", flag.ContinueOnError)
-	flags.BoolVar(&opts.browser.ArcExtension, "arc-extension", false, "use the optional legacy Arc helper extension instead of browser-approved debugging")
 	flags.BoolVar(&opts.manual, "manual", false, "paste session credentials into hidden terminal prompts")
 	flags.StringVar(&opts.browser.Workspace, "workspace", "", "Slack workspace name or https://name.slack.com")
 	flags.StringVar(&opts.browser.BrowserPath, "browser", "", "Chrome-compatible browser executable")
@@ -139,8 +138,8 @@ func parseLoginOptions(args []string) (loginOptions, error) {
 	if opts.browser.Timeout <= 0 {
 		return opts, errors.New("login timeout must be positive")
 	}
-	if opts.manual && (opts.browser.Workspace != "" || opts.browser.BrowserPath != "" || opts.browser.ArcExtension) {
-		return opts, errors.New("--manual cannot be combined with --workspace, --browser, or --arc-extension")
+	if opts.manual && (opts.browser.Workspace != "" || opts.browser.BrowserPath != "") {
+		return opts, errors.New("--manual cannot be combined with --workspace or --browser")
 	}
 	if _, err := auth.SignInURL(opts.browser.Workspace); err != nil {
 		return opts, err
