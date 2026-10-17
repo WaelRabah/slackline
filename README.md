@@ -225,9 +225,27 @@ The heartbeat check observes the connection for 45 seconds, without sending Slac
 
 [Release packages](.github/workflows/release.yml) builds all four macOS/Linux × amd64/arm64 targets, Linux `.deb` and `.rpm` packages, and macOS `.pkg` installers, then verifies SHA-256 checksums. The app is built with `CGO_ENABLED=0`, so Linux downloads do not require a specific glibc version. GoReleaser and Actions are pinned to specific versions/commits.
 
-- **Test packaging:** run the Release packages workflow manually on `main`. It uploads a `slackline-installers` artifact with snapshot packages and checksums, without creating a GitHub release.
-- **Publish a version:** push a SemVer tag such as `v0.1.0`. After tests and all installers succeed, the workflow creates a GitHub release with all downloads, `install.sh`, and `checksums.txt` together, then tests the public curl installation. Tags with a prerelease suffix such as `v0.1.0-rc.1` become prereleases. Manual workflow runs never publish.
-- Publication uses the workflow's `GITHUB_TOKEN` with `contents: write` only in the publish job. No personal access token is required. Signing/notarization would additionally require Apple Developer ID credentials.
+Each merge or push to `main` starts a **Release packages** run whose summary links to the version form. GitHub Actions cannot pause an automatic run for text input; the version box appears when you click **Run workflow**.
+
+To publish:
+
+1. Open [Actions → Release packages](https://github.com/WaelRabah/slackline/actions/workflows/release.yml).
+2. Click **Run workflow**, select **main**, and enter an unused version such as `0.3.0` or `v0.3.0`. Leave **dry_run** unchecked.
+3. Submit the form. The workflow freezes that main commit, runs CI on macOS/Linux, builds every installer, and verifies checksums and executable versions.
+4. Only after all packages pass does it push the version tag, upload all assets to a draft release, and publish it. It then checks the public curl installation.
+
+Versions with a suffix such as `0.3.0-rc.1` become prereleases and do not replace the latest stable installer. Existing versions are rejected, and tags are never moved. You no longer push a tag to start packaging; the workflow creates the remote tag at the end. GoReleaser uses a temporary local tag in its runner to build correctly versioned binaries before publication.
+
+For **test packaging**, enter an unused version and check **dry_run**. This performs the same checks and produces the `slackline-installers` artifact, with no remote tag or release. Dry runs can run on a feature branch; publication requires `main`. CLI equivalents:
+
+```sh
+gh workflow run release.yml --ref main -f version=0.3.0
+gh workflow run release.yml --ref main -f version=0.3.0-rc.1 -F dry_run=true
+```
+
+If publication is interrupted after creating the tag, **re-run failed jobs** to resume with the same source commit and packages. A matching draft can finish uploading; an already published release is verified without replacing its assets. A different commit or different published downloads cause an error. A full rerun rejects an already used version.
+
+Publication uses the workflow's `GITHUB_TOKEN` with `contents: write` only in the final job. No personal access token or repository secret is required. Signing/notarization would additionally require Apple Developer ID credentials.
 
 GitHub **Releases** holds these downloadable installers. The **Packages** sidebar is for registries such as npm and container images; it stays empty because Slackline does not publish a registry package. Manual workflow artifacts do not appear in Releases.
 
