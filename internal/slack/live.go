@@ -14,12 +14,17 @@ import (
 
 // LiveEvent never carries the signed socket URL or session credentials.
 type LiveEvent struct {
+	Reaction   *ReactionChange
 	Type       string
 	State      string
 	Message    Message
 	Changed    *Message
 	DeletedTS  string
 	RetryAfter time.Duration
+}
+
+type ReactionChange struct {
+	Name, User, Channel, TS, EventTS string
 }
 type LiveAPI interface {
 	Listen(context.Context, func(LiveEvent)) error
@@ -30,12 +35,21 @@ func ParseLiveEvent(data []byte) (LiveEvent, error) {
 		Type      string   `json:"type"`
 		Changed   *Message `json:"message"`
 		DeletedTS string   `json:"deleted_ts"`
+		Reaction  string   `json:"reaction"`
+		EventTS   string   `json:"event_ts"`
+		Item      struct {
+			Type, Channel, TS string
+		} `json:"item"`
 	}
 	var message Message
 	if json.Unmarshal(data, &wire) != nil || json.Unmarshal(data, &message) != nil {
 		return LiveEvent{}, errors.New("invalid live event")
 	}
-	return LiveEvent{Type: wire.Type, Message: message, Changed: wire.Changed, DeletedTS: wire.DeletedTS}, nil
+	event := LiveEvent{Type: wire.Type, Message: message, Changed: wire.Changed, DeletedTS: wire.DeletedTS}
+	if (wire.Type == "reaction_added" || wire.Type == "reaction_removed") && wire.Item.Type == "message" {
+		event.Reaction = &ReactionChange{wire.Reaction, message.User, wire.Item.Channel, wire.Item.TS, wire.EventTS}
+	}
+	return event, nil
 }
 func (c *Client) socketURL(ctx context.Context) (string, error) {
 	var response struct {

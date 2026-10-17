@@ -122,6 +122,13 @@ func (m *Model) updateThreads(msg threadsMsg) tea.Cmd {
 	}
 	changedCurrent := false
 	for _, thread := range msg.page.Threads {
+		thread.Root = m.withReactionSnapshot(thread.Root, thread.Root.Channel, msg.version)
+		for i := range thread.LatestReplies {
+			thread.LatestReplies[i] = m.withReactionSnapshot(thread.LatestReplies[i], thread.Root.Channel, msg.version)
+		}
+		for i := range thread.UnreadReplies {
+			thread.UnreadReplies[i] = m.withReactionSnapshot(thread.UnreadReplies[i], thread.Root.Channel, msg.version)
+		}
 		if m.threadVersions[thread.Key()] > msg.version {
 			continue
 		}

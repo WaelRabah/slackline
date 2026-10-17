@@ -71,6 +71,10 @@ type sentMsg struct {
 }
 
 type Model struct {
+	reactionLoading   string
+	reactionQueue     map[string]reactionRequest
+	reactionSnapshots map[string]reactionSnapshot
+	emojis            map[string]string
 	revealMessage     string
 	searchHits        []slack.SearchHit
 	searchLoading     bool
@@ -160,6 +164,8 @@ func New(ctx context.Context, api slack.API, session slack.Session, demo bool, o
 	vp.SoftWrap = true
 	m := Model{ctx: ctx, api: api, session: session, demo: demo, width: 100, height: 28, users: map[string]string{}, drafts: map[string]string{}, input: input, query: query, viewport: vp, booting: true, status: "Loading conversations…"}
 	m.theme = "mint"
+	m.reactionQueue = map[string]reactionRequest{}
+	m.reactionSnapshots = map[string]reactionSnapshot{}
 	m.summaries = map[string]conversationSummary{}
 	m.summaryBusy = map[string]bool{}
 	m.summaryViewport = viewport.New(viewport.WithWidth(70), viewport.WithHeight(20))
@@ -209,7 +215,7 @@ func New(ctx context.Context, api slack.API, session slack.Session, demo bool, o
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(m.bootstrap(), m.activityCmd(), m.recentCmd(), func() tea.Msg { return threadsTick{} })
+	return tea.Batch(m.bootstrap(), m.activityCmd(), m.recentCmd(), m.fetchEmojis(), func() tea.Msg { return threadsTick{} })
 }
 func (m Model) bootstrap() tea.Cmd {
 	return func() tea.Msg {
@@ -259,6 +265,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	switch msg := msg.(type) {
+	case reactionsMsg:
+		cmd := m.applyReactions(msg)
+		return m, cmd
+	case emojisMsg:
+		m.emojis = msg.values
+		m.renderHistory()
+		return m, nil
 	case searchMsg:
 		if msg.generation != m.finderGeneration || m.mode != finder {
 			return m, nil
@@ -291,7 +304,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		filtered := []slack.Message{}
 		for _, message := range msg.history.Messages {
 			if m.messageVersions[msg.channel+"/"+message.TS] <= msg.version {
-				filtered = append(filtered, message)
+				filtered = append(filtered, m.withReactionSnapshot(message, msg.channel, msg.version))
 			}
 		}
 		m.thread.history = mergeMessages(m.thread.history, filtered)
@@ -461,7 +474,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if time.Now().Before(m.retryUntil) {
 			return m, m.activityTimer()
 		}
-		return m, m.activityCmd()
+		return m, tea.Batch(m.activityCmd(), m.nextReaction())
 	case recentTick:
 		if time.Now().Before(m.retryUntil) {
 			return m, m.recentTimer()
@@ -503,7 +516,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		current := msg.history.Messages[:0]
 		for _, message := range msg.history.Messages {
 			if m.messageVersions[msg.channel+"/"+message.TS] <= msg.version {
-				current = append(current, message)
+				current = append(current, m.withReactionSnapshot(message, msg.channel, msg.version))
 			}
 		}
 		msg.history.Messages = current
@@ -1313,6 +1326,9 @@ func (m Model) messageBlock(message slack.Message, width int) string {
 		replies := fmt.Sprintf("↳ %d %s", message.ReplyCount, word)
 		content += "\n\n" + lipgloss.NewStyle().Foreground(m.muted()).Render(ansi.Hardwrap(replies, inner, true))
 	}
+	if badges := m.reactionBadges(message.Reactions, inner); badges != "" {
+		content += "\n\n" + badges
+	}
 	border := lipgloss.Color("#46505E")
 	if unread {
 		border = lipgloss.Color("#F4B860")
@@ -1337,7 +1353,7 @@ func (m Model) messageText(text string) string {
 		}
 		return "@" + id
 	})
-	return clean(html.UnescapeString(text))
+	return m.emojify(clean(html.UnescapeString(text)))
 }
 
 // Strip terminal control sequences before rendering workspace-controlled content.

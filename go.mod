@@ -10,6 +10,7 @@ require (
 	github.com/chromedp/cdproto v0.157.8
 	github.com/chromedp/chromedp v0.21.0
 	github.com/coder/websocket v1.8.15
+	github.com/kyokomi/emoji/v2 v2.2.14
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/sahilm/fuzzy v0.1.3
 	golang.org/x/term v0.45.0
