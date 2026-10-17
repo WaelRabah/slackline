@@ -134,6 +134,7 @@ jobs:
           merge-multiple: true
       - name: Generate and verify SHA-256 checksums
         run: |
+          cp install.sh dist/install.sh
           python3 scripts/checksums.py dist
           cd dist
           sha256sum --check checksums.txt
@@ -148,6 +149,7 @@ jobs:
             dist/*.rpm
             dist/*.pkg
             dist/checksums.txt
+            dist/install.sh
 
   publish:
     name: Publish GitHub release
@@ -170,3 +172,11 @@ jobs:
           args=(--verify-tag --generate-notes)
           if [[ "$RELEASE_TAG" == *-* ]]; then args+=(--prerelease); fi
           gh release create "$RELEASE_TAG" "${args[@]}" dist/*
+      - name: Verify installation from the published release
+        env:
+          SLACKLINE_VERSION: ${{ github.ref_name }}
+          SLACKLINE_INSTALL_DIR: ${{ runner.temp }}/slackline-install-check
+        run: |
+          curl --fail --silent --show-error --location --retry 2 \
+            "https://github.com/${{ github.repository }}/releases/download/${SLACKLINE_VERSION}/install.sh" | sh
+          "$SLACKLINE_INSTALL_DIR/slackline" --version

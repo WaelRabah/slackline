@@ -4,6 +4,33 @@ Slack + command line = Slackline. A Slack terminal client built with Go and Bubb
 
 ## Install
 
+On macOS or Linux (Apple Silicon/ARM64 and Intel/x86-64):
+
+```sh
+curl -fsSL https://github.com/WaelRabah/slackline/releases/latest/download/install.sh | sh
+```
+
+This detects your OS and CPU, downloads the latest stable release, verifies its SHA-256 checksum and version, and installs `slackline` to `~/.local/bin`. It needs no sudo, GitHub account, token, or GitHub CLI. Make sure the directory is on your `PATH`:
+
+```sh
+export PATH="$HOME/.local/bin:$PATH"
+slackline auth login
+slackline
+```
+
+Add the `export` line to `~/.zshrc` or `~/.bashrc` if needed. Run the installer again to upgrade; it replaces the executable atomically after verification and preserves your configuration. Standard tools required: `curl`, `tar`, and `sha256sum` (Linux) or `shasum` (macOS).
+
+To choose a version or install directory, pass variables to `sh`:
+
+```sh
+curl -fsSL https://github.com/WaelRabah/slackline/releases/latest/download/install.sh | \
+  SLACKLINE_VERSION=v0.1.0 SLACKLINE_INSTALL_DIR="$HOME/bin" sh
+```
+
+You can also download and inspect `install.sh` before running it. The installer is attached to every release, along with `checksums.txt`.
+
+### Package installers
+
 Download the package matching your operating system and CPU from [GitHub Releases](https://github.com/WaelRabah/slackline/releases). `arm64` is Apple Silicon / ARM64; `amd64` is Intel / x86-64.
 
 | Platform | Installer | Installs the command to |
@@ -201,8 +228,10 @@ The heartbeat check observes the connection for 45 seconds, without sending Slac
 [Release packages](.github/workflows/release.yml) builds all four macOS/Linux × amd64/arm64 targets, Linux `.deb` and `.rpm` packages, and macOS `.pkg` installers, then verifies SHA-256 checksums. The app is built with `CGO_ENABLED=0`, so Linux downloads do not require a specific glibc version. GoReleaser and Actions are pinned to specific versions/commits.
 
 - **Test packaging:** run the Release packages workflow manually on `main`. It uploads a `slackline-installers` artifact with snapshot packages and checksums, without creating a GitHub release.
-- **Publish a version:** push a SemVer tag such as `v0.1.0`. After tests and all installers succeed, the workflow creates a GitHub release with all downloads together. Tags with a prerelease suffix such as `v0.1.0-rc.1` become prereleases. Manual workflow runs never publish.
+- **Publish a version:** push a SemVer tag such as `v0.1.0`. After tests and all installers succeed, the workflow creates a GitHub release with all downloads, `install.sh`, and `checksums.txt` together, then tests the public curl installation. Tags with a prerelease suffix such as `v0.1.0-rc.1` become prereleases. Manual workflow runs never publish.
 - Publication uses the workflow's `GITHUB_TOKEN` with `contents: write` only in the publish job. No personal access token is required. Signing/notarization would additionally require Apple Developer ID credentials.
+
+GitHub **Releases** holds these downloadable installers. The **Packages** sidebar is for registries such as npm and container images; it stays empty because Slackline does not publish a registry package. Manual workflow artifacts do not appear in Releases.
 
 Local packaging uses the same pinned [GoReleaser configuration](.goreleaser.yaml):
 

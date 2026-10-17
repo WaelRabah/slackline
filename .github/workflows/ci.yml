@@ -37,6 +37,8 @@ jobs:
         run: go vet ./...
       - name: Test optional browser helper
         run: node --test browser-extension/tests/background.test.cjs
+      - name: Test curl installer
+        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
       - name: Build and smoke-test
         env:
           CGO_ENABLED: '0'

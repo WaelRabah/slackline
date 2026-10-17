@@ -47,3 +47,7 @@ dist/
 state-*.json
 *.pem
 *.key
+
+# Python installer checks
+__pycache__/
+*.py[cod]
