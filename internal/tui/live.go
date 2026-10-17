@@ -41,6 +41,10 @@ func realMessage(message slack.Message) bool {
 func (m *Model) updateLive(event slack.LiveEvent) tea.Cmd {
 	message := event.Message
 	switch event.Type {
+	case "reaction_added", "reaction_removed":
+		return m.updateReaction(event)
+	case "emoji_changed":
+		return m.fetchEmojis()
 	case "_connection":
 		wasLive := m.liveState == "live"
 		m.liveState = event.State

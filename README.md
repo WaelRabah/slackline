@@ -133,6 +133,8 @@ Credentials are stored at `~/.config/slackline/config.toml` (or under `$XDG_CONF
 
 See [config.example.toml](config.example.toml) for the configuration structure. Provider settings support on-demand private conversation summaries, with explicit enablement in Settings; populated keys alone do not activate inference.
 
+Slack emoji shortcodes render as Unicode in message bodies and thread previews, including flags and skin tones. Code spans and links stay literal. Reaction badges show Slack's total count, with a check mark on your own reactions, and update silently on live reaction events. Workspace aliases to standard emoji resolve automatically; unknown or image-backed custom emoji retain their `:name:` fallback. Directory restrictions do not block reading messages.
+
 ## Keys
 
 | Key | Action |

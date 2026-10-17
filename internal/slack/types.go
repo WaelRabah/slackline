@@ -45,17 +45,18 @@ func (u User) DisplayName() string {
 }
 
 type Message struct {
-	BotID       string `json:"bot_id"`
-	Channel     string `json:"channel"`
-	LastRead    string `json:"last_read"`
-	LatestReply string `json:"latest_reply"`
-	TS          string `json:"ts"`
-	User        string `json:"user"`
-	Text        string `json:"text"`
-	Username    string `json:"username"`
-	ThreadTS    string `json:"thread_ts"`
-	ReplyCount  int    `json:"reply_count"`
-	Subtype     string `json:"subtype"`
+	Reactions   []Reaction `json:"reactions"`
+	BotID       string     `json:"bot_id"`
+	Channel     string     `json:"channel"`
+	LastRead    string     `json:"last_read"`
+	LatestReply string     `json:"latest_reply"`
+	TS          string     `json:"ts"`
+	User        string     `json:"user"`
+	Text        string     `json:"text"`
+	Username    string     `json:"username"`
+	ThreadTS    string     `json:"thread_ts"`
+	ReplyCount  int        `json:"reply_count"`
+	Subtype     string     `json:"subtype"`
 }
 
 type History struct {
