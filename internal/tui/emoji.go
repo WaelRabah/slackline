@@ -152,7 +152,9 @@ func (m *Model) applyReactions(msg reactionsMsg) tea.Cmd {
 	m.reactionLoading = ""
 	latest := m.reactionQueue[key]
 	if msg.err != nil {
-		delete(m.reactionQueue, key)
+		if latest.version == msg.request.version {
+			delete(m.reactionQueue, key)
+		}
 		m.setError(msg.err)
 		return m.nextReaction()
 	}

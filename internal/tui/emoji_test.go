@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -98,5 +99,29 @@ func TestAuthoritativeReactionsNeverGuessFromPartialUsers(t *testing.T) {
 	m = next.(Model)
 	if len(m.history) != 1 || m.history[0].Reactions[0].Count != 5 {
 		t.Fatal("reaction arriving before history hid the message")
+	}
+}
+
+func TestOlderReactionFailureKeepsNewerRefresh(t *testing.T) {
+	m := ready(t)
+	m.api = &reactionFixture{slack.NewDemo(), 7}
+	message := m.history[0]
+	change := slack.ReactionChange{Channel: m.active, TS: message.TS, EventTS: "201.1"}
+	next, cmd := m.Update(slack.LiveEvent{Type: "reaction_added", Reaction: &change})
+	m = next.(Model)
+	old := cmd().(reactionsMsg)
+	change.EventTS = "202.1"
+	next, _ = m.Update(slack.LiveEvent{Type: "reaction_added", Reaction: &change})
+	m = next.(Model)
+	old.err = errors.New("temporary fixture failure")
+	next, cmd = m.Update(old)
+	m = next.(Model)
+	if cmd == nil {
+		t.Fatal("older failure discarded the newer refresh")
+	}
+	next, _ = m.Update(cmd())
+	m = next.(Model)
+	if m.history[0].Reactions[0].Count != 7 {
+		t.Fatal("newer authoritative count was lost")
 	}
 }
