@@ -133,7 +133,11 @@ Credentials are stored at `~/.config/slackline/config.toml` (or under `$XDG_CONF
 
 See [config.example.toml](config.example.toml) for the configuration structure. Provider settings support on-demand private conversation summaries, with explicit enablement in Settings; populated keys alone do not activate inference.
 
-Slack emoji shortcodes render as Unicode in message bodies and thread previews, including flags and skin tones. Code spans and links stay literal. Reaction badges show Slack's total count, with a check mark on your own reactions, and update silently on live reaction events. Workspace aliases to standard emoji resolve automatically; unknown or image-backed custom emoji retain their `:name:` fallback. Directory restrictions do not block reading messages.
+Slack emoji shortcodes render as Unicode in message bodies and thread previews, including flags and skin tones. Code spans and links stay literal. Reaction badges show Slack's total count, with a check mark on your own reactions, and update silently on live reaction events. Workspace aliases to standard emoji resolve automatically; unknown emoji retain their `:name:` fallback. Image-backed custom emoji keep their shortcode in text and display a labelled preview below the message. Directory restrictions do not block reading messages.
+
+Images uploaded to Slack, Slack-hosted image attachments/Block Kit images, and custom emoji display inline as colour half-block previews. PNG, JPEG, GIF (first frame), and WebP are supported. Select a message and press `v` for an enlarged preview; `←`/`→` cycle its images and `Esc` returns to the conversation or replies. This works in Warp without Kitty/Sixel support; previews use terminal cells rather than native-resolution pixels, and animated images are static.
+
+Only visible images load, one at a time. Previews remain in a bounded in-memory cache and are never written to disk. Downloads are limited to 8 MiB and 16 megapixels before decoding. Session credentials are sent only to Slack's private file hosts, never the public custom emoji CDN or external sites. Arbitrary external image links, inaccessible files, SVG, and other unsupported formats show a readable fallback. `R` retries failed visible previews while reloading the conversation. The offline demo includes a generated image and makes no image network requests.
 
 ## Keys
 
@@ -156,6 +160,7 @@ Slack emoji shortcodes render as Unicode in message bodies and thread previews, 
 | `h`, `l`, `w`, `b`, `0`, `$`, `x` in normal composer | Move or delete text |
 | `Enter` in insert mode | Send the typed message |
 | `r` / `R` | Reply to selected message in its thread / reload current conversation |
+| `v` on a message | Enlarge its images; arrows cycle, `Esc` returns |
 | `s` / `S` | Generate or refresh private 14-day summary / expand the pinned summary |
 | `,` or forwarded `Cmd+,` | Open Settings; `Ctrl+s` saves, `Esc` cancels |
 | `L` | Load an older history/replies page, or older followed threads |
