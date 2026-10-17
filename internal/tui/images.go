@@ -294,7 +294,7 @@ func (m *Model) loadVisibleImages() tea.Cmd {
 func (m Model) renderImage(ref imageRef, columns, rows int) string {
 	entry := m.images[ref.url]
 	if entry == nil || (entry.image == nil && entry.error == "") {
-		return "Loading image…"
+		return ansi.Truncate("Loading image…", columns, "…")
 	}
 	if entry.error != "" {
 		return ansi.Hardwrap("Preview unavailable: "+entry.error, columns, true)
