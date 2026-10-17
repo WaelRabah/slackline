@@ -1,0 +1,55 @@
+version: 2
+project_name: slackline
+
+builds:
+  - id: slackline
+    main: ./cmd/slackline
+    binary: slackline
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - formats: [tar.gz]
+    name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+    files:
+      - LICENSE
+      - README.md
+      - config.example.toml
+      - docs/ai-features.md
+
+nfpms:
+  - id: linux
+    package_name: slackline
+    file_name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+    homepage: https://github.com/WaelRabah/slackline
+    maintainer: Wael Rabah <WaelRabah@users.noreply.github.com>
+    description: Slack in your terminal, with threads, live updates, and private AI summaries.
+    license: Apache-2.0
+    formats: [deb, rpm]
+    bindir: /usr/bin
+    contents:
+      - src: ./LICENSE
+        dst: /usr/share/doc/slackline/LICENSE
+      - src: ./README.md
+        dst: /usr/share/doc/slackline/README.md
+      - src: ./config.example.toml
+        dst: /usr/share/doc/slackline/config.example.toml
+
+checksum:
+  name_template: checksums.txt
+snapshot:
+  version_template: '0.0.0-dev.{{ .ShortCommit }}'
+changelog:
+  disable: true
+release:
+  disable: true

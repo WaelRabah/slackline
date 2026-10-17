@@ -1,0 +1,22 @@
+services:
+  dev:
+    image: golang:1.26
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+      - go-mod:/go/pkg/mod
+      - go-build:/root/.cache/go-build
+    environment:
+      CGO_ENABLED: "1"
+    command: go test -race ./...
+  release:
+    image: ghcr.io/goreleaser/goreleaser:v2.18.3
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+      - go-mod:/go/pkg/mod
+      - go-build:/root/.cache/go-build
+    command: check
+volumes:
+  go-mod:
+  go-build:

@@ -31,3 +31,19 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Local sessions, private context, and generated files
+.context
+.reminders.md
+.env
+.env.*
+!.env.example
+config.toml
+*.test
+coverage.out
+bin/
+.DS_Store
+dist/
+state-*.json
+*.pem
+*.key

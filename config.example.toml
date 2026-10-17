@@ -1,0 +1,20 @@
+# `slackline auth login` opens browser sign-in; --manual uses hidden prompts.
+[slack]
+token = "" # xoxc token from your signed-in Slack session
+cookie = "" # value of the d cookie from that same session
+
+[ai]
+enabled = false # explicitly enable on-demand private conversation summaries
+base_url = "https://api.compactif.ai/v1"
+api_key = ""
+chat_model = ""
+embedding_model = ""
+
+[notifications]
+enabled = true # macOS Glass sound only for actual incoming live messages
+
+[sidebar]
+recent_days = 14 # opened/read or sent; 0 starts with all conversations
+
+[ui]
+theme = "mint" # mint, ocean, amber
