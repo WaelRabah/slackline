@@ -168,7 +168,7 @@ func TestImageFailureKeepsReservedBlockHeight(t *testing.T) {
 		}
 		after := lipgloss.Height(m.messageBlock(message, width))
 		if before != after {
-			t.Fatal("failed image moved message blocks")
+			t.Fatalf("failed image moved message blocks: width=%d before=%d after=%d", width, before, after)
 		}
 	}
 }
