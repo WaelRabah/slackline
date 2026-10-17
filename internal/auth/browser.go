@@ -26,10 +26,9 @@ const DefaultTimeout = 10 * time.Minute
 // Options contains no credentials. Arc attaches with browser-approved debugging;
 // other browsers use an isolated temporary profile.
 type Options struct {
-	ArcExtension bool
-	BrowserPath  string
-	Workspace    string
-	Timeout      time.Duration
+	BrowserPath string
+	Workspace   string
+	Timeout     time.Duration
 }
 
 var slug = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,78}[a-z0-9])?$`)
@@ -145,9 +144,6 @@ func Browser(ctx context.Context, opts Options) (slack.Credentials, error) {
 	ctx, stop := context.WithTimeout(ctx, timeout)
 	defer stop()
 	if runtime.GOOS == "darwin" && filepath.Base(path) == "Arc" {
-		if opts.ArcExtension {
-			return arcExtensionLogin(ctx, startURL)
-		}
 		creds, arcErr := arcLogin(ctx, startURL)
 		if !arcChromeFallback(arcErr, opts.BrowserPath) {
 			return creds, arcErr
@@ -158,9 +154,6 @@ func Browser(ctx context.Context, opts Options) (slack.Credentials, error) {
 		}
 		fmt.Println("Arc rejected the debugging connection (HTTP 403). Opening a temporary " + isolatedBrowserName(fallback) + " login window instead; Arc remains your default browser.")
 		path = fallback
-	}
-	if opts.ArcExtension {
-		return slack.Credentials{}, errors.New("--arc-extension requires Arc as the selected browser")
 	}
 	// A minimal allocator keeps Chrome's normal protections enabled. The
 	// current chromedp release uses a private pipe instead of a listening port.

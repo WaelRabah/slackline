@@ -13,10 +13,6 @@ func TestLoginOptions(t *testing.T) {
 	if err != nil || opts.manual || opts.browser.Timeout != 10*time.Minute {
 		t.Fatal("browser login is not default")
 	}
-	opts, err = parseLoginOptions([]string{"--arc-extension"})
-	if err != nil || !opts.browser.ArcExtension {
-		t.Fatal("explicit extension fallback missing")
-	}
 	opts, err = parseLoginOptions([]string{"--manual"})
 	if err != nil || !opts.manual {
 		t.Fatal("manual fallback missing")
@@ -25,7 +21,7 @@ func TestLoginOptions(t *testing.T) {
 	if err != nil || opts.browser.Workspace != "team" || opts.browser.BrowserPath != "/custom/chrome" || opts.browser.Timeout != 3*time.Minute {
 		t.Fatal("browser options not parsed")
 	}
-	for _, args := range [][]string{{"--manual", "--arc-extension"}, {"--manual", "--workspace", "team"}, {"--manual", "--browser", "chrome"}, {"--timeout", "0s"}, {"--timeout", "-1s"}, {"extra"}, {"--workspace", "https://attacker.test"}} {
+	for _, args := range [][]string{{"--manual", "--workspace", "team"}, {"--manual", "--browser", "chrome"}, {"--timeout", "0s"}, {"--timeout", "-1s"}, {"extra"}, {"--workspace", "https://attacker.test"}} {
 		if _, err := parseLoginOptions(args); err == nil {
 			t.Error("accepted invalid login options")
 		}
