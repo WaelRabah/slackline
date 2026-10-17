@@ -194,6 +194,7 @@ func (m Model) threadUnreadCount(thread slack.Thread) int {
 func (m *Model) renderThreads() {
 	blocks := []string{}
 	m.blockStarts = map[string]int{}
+	m.blockEnds = map[string]int{}
 	line := 0
 	for _, thread := range m.feed {
 		root := thread.Root
@@ -232,6 +233,7 @@ func (m *Model) renderThreads() {
 		block := copy.messageBlock(root, m.viewport.Width())
 		m.blockStarts[thread.Key()] = line
 		line += lipgloss.Height(block) + 1
+		m.blockEnds[thread.Key()] = line - 1
 		blocks = append(blocks, block)
 	}
 	if len(blocks) == 0 {
