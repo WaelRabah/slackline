@@ -2,67 +2,115 @@ name: Release packages
 
 on:
   push:
-    tags: ['v*']
+    branches: [main]
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (for example 0.3.0 or 0.3.0-rc.1)'
+        required: true
+        type: string
+      dry_run:
+        description: 'Build and verify packages only; do not push a tag or publish'
+        required: false
+        type: boolean
+        default: false
+
+run-name: ${{ github.event_name == 'push' && 'Release ready — enter a version' || format('Release {0}', inputs.version) }}
 
 permissions:
   contents: read
 
 concurrency:
-  group: packages-${{ github.ref }}
+  group: release-${{ github.event_name == 'workflow_dispatch' && 'publish' || 'prompt' }}
   cancel-in-progress: false
 
 jobs:
+  prepare:
+    name: ${{ github.event_name == 'push' && 'Enter a version to release' || 'Validate version and source' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+      sha: ${{ steps.version.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Open the release version form
+        if: github.event_name == 'push'
+        env:
+          WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/workflows/release.yml
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          {
+            echo '### Choose a version to release'
+            echo
+            echo "Main was updated to $SOURCE_SHA."
+            echo
+            echo "[Open the release workflow]($WORKFLOW_URL), click **Run workflow**, select **main**, and enter the version."
+            echo
+            echo 'GitHub cannot pause this merge-triggered run for text input. Submitting the version form starts checks, packaging, tag creation, and publication automatically.'
+            echo 'A release builds the exact main commit selected when you submit that form.'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Validate release input
+        if: github.event_name == 'workflow_dispatch'
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          args=()
+          if [[ "$DRY_RUN" == true ]]; then args+=(--dry-run); fi
+          python3 scripts/release.py prepare "${args[@]}"
+
   checks:
+    needs: prepare
+    if: github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/ci.yml
 
   build:
     name: Build archives and Linux installers
-    needs: checks
+    needs: [prepare, checks]
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          ref: ${{ needs.prepare.outputs.sha }}
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - name: Require a supported release tag
-        if: github.ref_type == 'tag'
+      - name: Set the version for packaging (local checkout only)
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: |
-          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo 'Release tags must use vMAJOR.MINOR.PATCH, optionally with a prerelease suffix' >&2
-            exit 1
-          fi
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.sha }}
+        run: git tag "$RELEASE_TAG" "$SOURCE_SHA"
       - name: Validate release configuration
         uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
           version: v2.18.3
           args: check
-      - name: Build tagged packages
-        if: github.ref_type == 'tag'
+      - name: Build versioned packages
+        env:
+          GORELEASER_CURRENT_TAG: ${{ needs.prepare.outputs.tag }}
         uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
           version: v2.18.3
           args: release --clean --skip=publish
-      - name: Build snapshot packages
-        if: github.ref_type != 'tag'
-        uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
-        with:
-          version: v2.18.3
-          args: release --snapshot --clean --skip=publish
       - name: Smoke-test Linux archive and Debian package
+        env:
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           mkdir -p smoke/archive smoke/deb
           archive=(dist/*_linux_amd64.tar.gz)
           deb=(dist/*_linux_amd64.deb)
           tar -xzf "${archive[0]}" -C smoke/archive slackline
-          smoke/archive/slackline --version
+          test "$(smoke/archive/slackline --version)" = "Slackline $RELEASE_VERSION"
           dpkg-deb --extract "${deb[0]}" smoke/deb
-          smoke/deb/usr/bin/slackline --version
+          test "$(smoke/deb/usr/bin/slackline --version)" = "Slackline $RELEASE_VERSION"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: base-packages
@@ -76,7 +124,7 @@ jobs:
 
   macos:
     name: macOS installer (${{ matrix.arch }})
-    needs: build
+    needs: [prepare, build]
     runs-on: macos-15
     timeout-minutes: 15
     strategy:
@@ -85,6 +133,8 @@ jobs:
         arch: [amd64, arm64]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: base-packages
@@ -99,6 +149,7 @@ jobs:
       - name: Verify installer payload
         env:
           TARGET_ARCH: ${{ matrix.arch }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           packages=(dist/*_darwin_"$TARGET_ARCH".pkg)
           pkgutil --payload-files "${packages[0]}" | grep -q 'usr/local/bin/slackline'
@@ -107,7 +158,7 @@ jobs:
           tar -xzf "${archives[0]}" -C smoke slackline
           file smoke/slackline
           if [[ "$TARGET_ARCH" == arm64 && "$(uname -m)" == arm64 ]] || [[ "$TARGET_ARCH" == amd64 && "$(uname -m)" == x86_64 ]]; then
-            smoke/slackline --version
+            test "$(smoke/slackline --version)" = "Slackline $RELEASE_VERSION"
           fi
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -118,10 +169,13 @@ jobs:
 
   collect:
     name: Assemble downloads and checksums
-    needs: [build, macos]
+    timeout-minutes: 15
+    needs: [prepare, build, macos]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: '*packages'
@@ -133,11 +187,22 @@ jobs:
           path: dist
           merge-multiple: true
       - name: Generate and verify SHA-256 checksums
+        env:
+          RELEASE_VERSION: ${{ needs.prepare.outputs.tag }}
         run: |
           cp install.sh dist/install.sh
+          python3 -c 'from pathlib import Path; Path("dist/metadata.json").unlink()'
           python3 scripts/checksums.py dist
+          python3 scripts/release.py verify
           cd dist
           sha256sum --check checksums.txt
+      - name: Dry-run result
+        if: inputs.dry_run
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.sha }}
+        run: |
+          echo "Verified packages for $RELEASE_TAG at $SOURCE_SHA. Download slackline-installers below; no remote tag or release was created." >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: slackline-installers
@@ -152,31 +217,40 @@ jobs:
             dist/install.sh
 
   publish:
-    name: Publish GitHub release
-    if: github.event_name == 'push' && github.ref_type == 'tag'
-    needs: collect
+    name: Create tag and publish GitHub release
+    timeout-minutes: 15
+    if: github.event_name == 'workflow_dispatch' && !inputs.dry_run
+    needs: [prepare, collect]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          fetch-depth: 0
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: slackline-installers
           path: dist
-      - name: Publish all installers together
+      - name: Verify packages, create tag, and publish
         env:
           GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: |
-          args=(--verify-tag --generate-notes)
-          if [[ "$RELEASE_TAG" == *-* ]]; then args+=(--prerelease); fi
-          gh release create "$RELEASE_TAG" "${args[@]}" dist/*
+          RELEASE_VERSION: ${{ needs.prepare.outputs.tag }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.sha }}
+        run: python3 scripts/release.py publish
       - name: Verify installation from the published release
         env:
-          SLACKLINE_VERSION: ${{ github.ref_name }}
+          SLACKLINE_VERSION: ${{ needs.prepare.outputs.tag }}
           SLACKLINE_INSTALL_DIR: ${{ runner.temp }}/slackline-install-check
         run: |
           curl --fail --silent --show-error --location --retry 2 \
             "https://github.com/${{ github.repository }}/releases/download/${SLACKLINE_VERSION}/install.sh" | sh
-          "$SLACKLINE_INSTALL_DIR/slackline" --version
+          test "$("$SLACKLINE_INSTALL_DIR/slackline" --version)" = "Slackline ${SLACKLINE_VERSION#v}"
+      - name: Release published
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.sha }}
+          REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          echo "Published [$RELEASE_TAG]($REPOSITORY_URL/releases/tag/$RELEASE_TAG) from $SOURCE_SHA. The public curl installer can now install this release." >> "$GITHUB_STEP_SUMMARY"
