@@ -18,7 +18,14 @@ class ReleaseError(Exception):
 def command(*args, optional=False):
     result = subprocess.run(args, capture_output=True, text=True)
     if result.returncode and not optional:
-        raise ReleaseError(f"{args[0]} {args[1]} failed; no existing tag or published asset will be overwritten")
+        detail = (result.stderr.strip().splitlines() or ["no error output"])[-1]
+        for name in ("GH_TOKEN", "GITHUB_TOKEN", "SLACK_TOKEN", "SLACK_COOKIE"):
+            secret = os.environ.get(name)
+            if secret:
+                detail = detail.replace(secret, "[redacted]")
+        detail = re.sub(r"https?://\S+", "[URL]", detail)
+        detail = "".join(char for char in detail if char.isprintable())[:500]
+        raise ReleaseError(f"{args[0]} {args[1]} failed (exit {result.returncode}): {detail}")
     return result
 
 
@@ -39,19 +46,18 @@ def repository():
 
 
 def release_info(repo, tag):
-    result = command("gh", "api", "--include", f"repos/{repo}/releases/tags/{tag}", optional=True)
-    status = re.match(r"HTTP/\S+ (\d{3})\b", result.stdout)
-    if status and status[1] == "404":
-        return None
-    if result.returncode or not status or status[1] != "200":
+    # The by-tag REST endpoint returns published releases only. A writer's
+    # paginated list also includes drafts, which makes interrupted uploads resumable.
+    result = command("gh", "api", "--paginate", "--slurp", f"repos/{repo}/releases?per_page=100", optional=True)
+    if result.returncode:
         raise ReleaseError("Could not verify whether the GitHub release already exists")
     try:
-        value = json.loads(result.stdout.split("\n\n", 1)[1])
-        if value["tag_name"] != tag or not isinstance(value["draft"], bool):
+        matches = [value for page in json.loads(result.stdout) for value in page if value["tag_name"] == tag]
+        if len(matches) > 1 or any(not isinstance(value["draft"], bool) for value in matches):
             raise ValueError()
-        return value
-    except (IndexError, KeyError, ValueError):
-        raise ReleaseError("GitHub returned invalid release metadata") from None
+        return matches[0] if matches else None
+    except (KeyError, TypeError, ValueError):
+        raise ReleaseError("GitHub returned invalid or ambiguous release metadata") from None
 
 
 def remote_tag(tag):
