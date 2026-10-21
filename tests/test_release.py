@@ -20,10 +20,14 @@ root = pathlib.Path(os.environ['FAKE_ROOT'])
 state = json.loads((root / 'github.json').read_text())
 with (root / 'commands.jsonl').open('a') as log: log.write(json.dumps(args)+'\n')
 if args[0] == 'api':
-    status = state.get('api_status') or (200 if state['release'] else 404)
-    print('HTTP/2.0 '+str(status)+' fixture\n')
-    print(json.dumps(state['release'] or {'message': 'Not Found'}))
-    sys.exit(0 if status == 200 else 1)
+    assert '--paginate' in args and '--slurp' in args
+    assert '/releases?per_page=100' in args[-1]
+    if state.get('api_status'):
+        print('API unavailable', file=sys.stderr); sys.exit(1)
+    values = [state['release']] if state['release'] else []
+    if os.environ.get('FAKE_READ_ONLY') == '1': values = [r for r in values if not r['draft']]
+    print(json.dumps([values]))
+    sys.exit(0)
 if args[:2] == ['release', 'create']:
     if state.get('create_fail'): sys.exit(1)
     tag = args[2]
@@ -149,6 +153,35 @@ class ReleaseTests(unittest.TestCase):
         self.state(release=None, api_status=503)
         with self.assertRaises(release.ReleaseError): release.prepare("0.5.0", False)
         self.assertFalse((self.root / "outputs").exists())
+
+    def test_paginated_draft_lookup_and_ambiguous_metadata(self):
+        data = [[{"tag_name": "v0.2.0", "draft": False}], [{"tag_name": "v0.3.0", "draft": True}]]
+        result = subprocess.CompletedProcess([], 0, json.dumps(data), "")
+        with patch.object(release, "command", return_value=result):
+            self.assertTrue(release.release_info("fixture/slackline", "v0.3.0")["draft"])
+        data[0].append({"tag_name": "v0.3.0", "draft": False})
+        result.stdout = json.dumps(data)
+        with patch.object(release, "command", return_value=result), self.assertRaises(release.ReleaseError):
+            release.release_info("fixture/slackline", "v0.3.0")
+
+    def test_hidden_draft_is_rechecked_by_publisher_before_tag_creation(self):
+        self.state(release={"tag_name": "v0.3.0", "draft": True})
+        os.environ["FAKE_READ_ONLY"] = "1"
+        release.prepare("0.3.0", False)
+        os.environ["FAKE_READ_ONLY"] = "0"
+        with self.assertRaises(release.ReleaseError): release.publish("0.3.0", self.bundle)
+        self.assertEqual(self.git("ls-remote", "--tags", "origin"), "")
+        self.assertTrue(all(args[0] == "api" for args in self.commands()))
+
+    def test_command_errors_keep_diagnostics_but_redact_tokens_and_urls(self):
+        failed = subprocess.CompletedProcess(["gh", "release"], 1, "", "HTTP 403 fixture-only https://example.test/?signature=private\n")
+        with patch.object(release.subprocess, "run", return_value=failed), self.assertRaises(release.ReleaseError) as caught:
+            release.command("gh", "release")
+        message = str(caught.exception)
+        self.assertIn("HTTP 403", message)
+        self.assertNotIn("fixture-only", message)
+        self.assertNotIn("signature=private", message)
+        self.assertNotIn("example.test", message)
 
     def test_tag_lookup_failure_stops_before_build(self):
         self.git("remote", "set-url", "origin", str(self.root / "missing.git"))

@@ -234,7 +234,7 @@ To publish:
 3. Submit the form. The workflow freezes that main commit, runs CI on macOS/Linux, builds every installer, and verifies checksums and executable versions.
 4. Only after all packages pass does it push the version tag, upload all assets to a draft release, and publish it. It then checks the public curl installation.
 
-Versions with a suffix such as `0.3.0-rc.1` become prereleases and do not replace the latest stable installer. Existing versions are rejected, and tags are never moved. You no longer push a tag to start packaging; the workflow creates the remote tag at the end. GoReleaser uses a temporary local tag in its runner to build correctly versioned binaries before publication.
+Versions with a suffix such as `0.3.0-rc.1` become prereleases and do not replace the latest stable installer. Existing tags and visible releases are rejected before building. The final publisher also checks drafts with its write-enabled token before creating anything, and tags are never moved. You no longer push a tag to start packaging; the workflow creates the remote tag at the end. GoReleaser uses a temporary local tag in its runner to build correctly versioned binaries before publication.
 
 For **test packaging**, enter an unused version and check **dry_run**. This performs the same checks and produces the `slackline-installers` artifact, with no remote tag or release. Dry runs can run on a feature branch; publication requires `main`. CLI equivalents:
 
