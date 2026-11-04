@@ -40,6 +40,7 @@ const (
 	finder
 	settingsMode
 	summaryMode
+	imageMode
 )
 
 type bootstrapMsg struct {
@@ -71,6 +72,12 @@ type sentMsg struct {
 }
 
 type Model struct {
+	images            map[string]*imageEntry
+	imageLoading      string
+	imageClock        uint64
+	imageParent       *parentImageCache
+	viewer            []imageRef
+	imageIndex        int
 	reactionLoading   string
 	reactionQueue     map[string]reactionRequest
 	reactionSnapshots map[string]reactionSnapshot
@@ -125,6 +132,7 @@ type Model struct {
 	thread                                             *threadState
 	selectedMessage                                    string
 	blockStarts                                        map[string]int
+	blockEnds                                          map[string]int
 	ctx                                                context.Context
 	api                                                slack.API
 	session                                            slack.Session
@@ -164,6 +172,7 @@ func New(ctx context.Context, api slack.API, session slack.Session, demo bool, o
 	vp.SoftWrap = true
 	m := Model{ctx: ctx, api: api, session: session, demo: demo, width: 100, height: 28, users: map[string]string{}, drafts: map[string]string{}, input: input, query: query, viewport: vp, booting: true, status: "Loading conversations…"}
 	m.theme = "mint"
+	m.images = map[string]*imageEntry{}
 	m.reactionQueue = map[string]reactionRequest{}
 	m.reactionSnapshots = map[string]reactionSnapshot{}
 	m.summaries = map[string]conversationSummary{}
@@ -235,7 +244,7 @@ func (m Model) bootstrap() tea.Cmd {
 	}
 }
 
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.mode == settingsMode {
 		switch msg.(type) {
 		case tea.KeyPressMsg, tea.PasteMsg:
@@ -1132,6 +1141,7 @@ func (m *Model) renderHistory() {
 	}
 	if len(m.history) == 0 {
 		m.blockStarts = nil
+		m.blockEnds = nil
 		empty := "No messages in this conversation."
 		if m.active == "" {
 			empty = ""
@@ -1151,11 +1161,13 @@ func (m *Model) renderHistory() {
 	}
 	blocks := make([]string, 0, len(m.history))
 	m.blockStarts = map[string]int{}
+	m.blockEnds = map[string]int{}
 	line := 0
 	for _, message := range m.history {
 		block := m.messageBlock(message, m.viewport.Width())
 		m.blockStarts[message.TS] = line
 		line += lipgloss.Height(block) + 1
+		m.blockEnds[message.TS] = line - 1
 		blocks = append(blocks, block)
 	}
 	m.viewport.SetContent(strings.Join(blocks, "\n\n"))
@@ -1317,6 +1329,7 @@ func (m Model) messageBlock(message slack.Message, width int) string {
 	}
 	body := strings.ReplaceAll(m.messageText(message.Text), "\t", "    ")
 	body = ansi.Hardwrap(body, inner, true)
+	body += m.imageBlocks(message, inner)
 	content := header + "\n\n" + body
 	if message.ReplyCount > 0 {
 		word := "replies"
@@ -1426,6 +1439,8 @@ func (m Model) View() tea.View {
 		content = m.settingsView()
 	} else if m.mode == summaryMode {
 		content = m.paneFrame("PRIVATE SUMMARY · Esc closes", m.summaryViewport.View(), m.width, m.mainHeight(), true)
+	} else if m.mode == imageMode {
+		content = m.imageView()
 	} else if m.mode == finder {
 		lines := []string{m.query.View(), "Names/users · ? text then Enter searches messages (14 days)"}
 		count := max(1, m.mainHeight()-5)

@@ -20,7 +20,7 @@ type Demo struct {
 func NewDemo() *Demo {
 	return &Demo{readPositions: map[string]string{}, startedAt: time.Now(), threads: map[string][]Message{"1792188120.000001": {{TS: "1792188121.000001", User: "UBOB", Text: "Threads are now supported. Backspace returns to the thread list.", ThreadTS: "1792188120.000001"}}}, messages: map[string][]Message{
 		"CGENERAL": {
-			{TS: "1792188000.000001", User: "UALICE", Text: ":wave: Welcome to slackline. This is an offline demo.", Reactions: []Reaction{{Name: "tada", Count: 3, Users: []string{"UYOU"}}, {Name: "+1::skin-tone-3", Count: 2}}},
+			{TS: "1792188000.000001", User: "UALICE", Text: ":wave: Welcome to slackline. This is an offline demo. Press v on this block for an enlarged image.", Files: []File{{ID: "FDEMO", Title: "Offline sunset preview", Mimetype: "image/png", URLPrivate: "demo://landscape"}}, Reactions: []Reaction{{Name: "tada", Count: 3, Users: []string{"UYOU"}}, {Name: "+1::skin-tone-3", Count: 2}}},
 			{TS: "1792188060.000001", User: "UBOB", Text: "Use j/k to choose a conversation, Enter to open it, and i to compose."},
 			{TS: "1792188120.000001", User: "UALICE", ReplyCount: 1, Text: "Press / to fuzzy-find channels and DMs. Tab switches panes; Esc leaves insert mode."},
 		},
