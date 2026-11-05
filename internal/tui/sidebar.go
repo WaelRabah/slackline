@@ -120,7 +120,7 @@ func (m Model) sidebarGroups() []sidebarGroup {
 	return groups
 }
 func (m Model) sidebarRows() []sidebarRow {
-	rows := []sidebarRow{{label: "✦ AI assistant", destination: aiAssistant, index: -2}, {label: "✦ AI summaries", destination: aiSummaries, index: -2}, {label: "↳ Threads", destination: threadsDestination, index: -2}}
+	rows := []sidebarRow{{label: "✦ AI assistant", destination: aiAssistant, index: -2}, {label: "✦ AI summaries", destination: aiSummaries, index: -2}, {label: "↳ Threads", destination: threadsDestination, index: -2}, {label: "✉ Unreads", destination: unreadsDestination, index: -2}}
 	for _, group := range m.sidebarGroups() {
 		marker := "▾ "
 		if m.collapsed[group.id] {
