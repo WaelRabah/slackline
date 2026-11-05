@@ -673,12 +673,12 @@ func (m *Model) canRequest() bool {
 
 func (m *Model) updateNormal(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	k := key.String()
-	if m.destination == latestDestination {
+	if m.destination == latestDestination && m.focus == messages {
 		if cmd, handled := m.latestKey(k); handled {
 			return *m, cmd
 		}
 	}
-	if m.destination == unreadsDestination {
+	if m.destination == unreadsDestination && m.focus == messages {
 		if cmd, handled := m.unreadsKey(k); handled {
 			return *m, cmd
 		}
