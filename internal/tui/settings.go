@@ -32,7 +32,7 @@ type preferencesSaved struct {
 	err    error
 }
 
-var settingLabels = []string{"Conversation summaries", "Provider base URL", "API key", "Chat model", "Embedding model (future search)", "Theme", "Message sounds", "Recent conversation days"}
+var settingLabels = []string{"Conversation summaries", "Provider base URL", "API key", "Chat model", "Embedding model (future search)", "Transcription model (speech to text)", "Theme", "Message sounds", "Recent conversation days"}
 
 func (m Model) accent() color.Color {
 	switch m.theme {
@@ -102,7 +102,7 @@ func (m *Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 				switch s.row {
 				case 0:
 					s.values.AI.Enabled = !s.values.AI.Enabled
-				case 5:
+				case 6:
 					themes := []string{"mint", "ocean", "amber"}
 					for i, t := range themes {
 						if t == s.values.Theme {
@@ -110,7 +110,7 @@ func (m *Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 							break
 						}
 					}
-				case 6:
+				case 7:
 					s.values.Sound = !s.values.Sound
 				default:
 					s.editing = true
@@ -126,7 +126,9 @@ func (m *Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 						value = s.values.AI.ChatModel
 					case 4:
 						value = s.values.AI.EmbeddingModel
-					case 7:
+					case 5:
+						value = s.values.AI.TranscriptionModel
+					case 8:
 						value = strconv.Itoa(s.values.Days)
 					}
 					s.input.SetValue(value)
@@ -160,7 +162,9 @@ func (m *Model) commitSetting() bool {
 		s.values.AI.ChatModel = value
 	case 4:
 		s.values.AI.EmbeddingModel = value
-	case 7:
+	case 5:
+		s.values.AI.TranscriptionModel = value
+	case 8:
 		days, err := strconv.Atoi(value)
 		if err != nil || days < 0 || days > 3650 {
 			s.error = "Recent days must be 0–3650 (0 shows all)"
@@ -186,7 +190,7 @@ func (m Model) settingsView() string {
 	if s.values.AI.APIKey != "" {
 		key = "•••••••• (hidden)"
 	}
-	values := []string{on(s.values.AI.Enabled), s.values.AI.BaseURL, key, s.values.AI.ChatModel, s.values.AI.EmbeddingModel, s.values.Theme, on(s.values.Sound), strconv.Itoa(s.values.Days)}
+	values := []string{on(s.values.AI.Enabled), s.values.AI.BaseURL, key, s.values.AI.ChatModel, s.values.AI.EmbeddingModel, s.values.AI.TranscriptionModel, s.values.Theme, on(s.values.Sound), strconv.Itoa(s.values.Days)}
 	lines := []string{"Enter edits/toggles · Ctrl+S saves · Esc cancels", "Summaries send this conversation’s 14-day text to your configured provider.", ""}
 	count := max(1, m.mainHeight()-7)
 	if m.mainHeight() < 8 {

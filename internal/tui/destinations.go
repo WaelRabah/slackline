@@ -57,6 +57,7 @@ func (m *Model) openDestination(id string) tea.Cmd {
 	}
 	if id == latestDestination {
 		m.status = "Latest · newest first"
+		m.latestUnseen = 0
 		m.renderDestination()
 		return nil
 	}
@@ -76,7 +77,9 @@ func (m *Model) openDestination(id string) tea.Cmd {
 }
 func (m *Model) renderDestination() {
 	if m.destination == latestDestination {
-		m.viewport.SetContent(m.latestView())
+		view, selected := m.latestLayout()
+		m.viewport.SetContent(view)
+		m.viewport.SetYOffset(selected)
 		return
 	}
 	if m.destination == aiSummaries && m.provider.Ready() && !m.demo {

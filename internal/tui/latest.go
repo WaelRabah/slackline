@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"image/color"
 	"sort"
 	"strings"
 	"time"
@@ -40,6 +41,11 @@ func (m *Model) noteRecent(item recentItem) {
 	}
 	m.recentSeen[item.key] = true
 	m.recent = append(m.recent, item)
+	if m.destination == latestDestination {
+		m.latestUnseen = 0
+	} else {
+		m.latestUnseen++
+	}
 	sort.SliceStable(m.recent, func(i, j int) bool { return m.recent[i].at.After(m.recent[j].at) })
 	for len(m.recent) > maxLatest {
 		delete(m.recentSeen, m.recent[len(m.recent)-1].key)
@@ -134,23 +140,30 @@ func (m *Model) openLatest() tea.Cmd {
 	return m.openSearchHit(slack.SearchHit{Message: item.message, Conversation: item.conversation})
 }
 
-// latestView renders the list, newest first, with the source of each entry.
-func (m Model) latestView() string {
+// latestLayout renders the list, newest first, with the source of each entry. It
+// also returns the first line of the selected entry, so the view can scroll to it.
+func (m Model) latestLayout() (string, int) {
 	width := max(1, m.viewport.Width())
 	muted := lipgloss.NewStyle().Foreground(m.muted())
 	accent := lipgloss.NewStyle().Bold(true).Foreground(m.accent())
 	if len(m.recent) > 0 {
-		accent = accent.Foreground(latestYellow)
+		accent = accent.Foreground(m.latestColor())
 	}
 	var b strings.Builder
 	b.WriteString(accent.Render(fmt.Sprintf("Latest · %d", len(m.recent))) + "\n")
+	b.WriteString(muted.Render("Enter opens · x dismisses") + "\n")
 	if len(m.recent) == 0 {
 		b.WriteString("\nNothing yet. New messages and finished summaries appear here.")
-		return ansi.Hardwrap(b.String(), width, true)
+		return ansi.Hardwrap(b.String(), width, true), 0
 	}
+	selected := min(m.latestIndex, len(m.recent)-1)
+	selectedLine := 0
 	for i, item := range m.recent {
+		if i == selected {
+			selectedLine = strings.Count(b.String(), "\n") + 1
+		}
 		cursor := "  "
-		if i == min(m.latestIndex, len(m.recent)-1) {
+		if i == selected {
 			cursor = "▶ "
 		}
 		icon := "✉"
@@ -158,16 +171,25 @@ func (m Model) latestView() string {
 			icon = "✦"
 		}
 		head := fmt.Sprintf("%s%s %s · %s", cursor, item.at.Local().Format("Jan 02 15:04"), icon, item.label)
-		b.WriteString("\n" + accent.Render(ansi.Truncate(head, width, "…")) + "\n")
 		body := "    " + item.text
 		if item.kind == "summary" {
 			body = "    " + item.source
 		}
-		b.WriteString(ansi.Truncate(body, width, "…") + "\n")
 		source := "    from: " + item.source
+		b.WriteString("\n" + accent.Render(ansi.Truncate(head, width, "…")) + "\n")
+		b.WriteString(ansi.Truncate(body, width, "…") + "\n")
 		b.WriteString(muted.Render(ansi.Truncate(source, width, "…")) + "\n")
 	}
-	return b.String()
+	return b.String(), selectedLine
+}
+
+// latestColor is orange while entries arrived that Latest has not shown, yellow
+// while it has entries.
+func (m Model) latestColor() color.Color {
+	if m.latestUnseen > 0 {
+		return latestOrange
+	}
+	return latestYellow
 }
 
 // latestKey moves through the list or opens the selected entry.
@@ -207,6 +229,17 @@ func (m *Model) dismissLatest() {
 
 // latestYellow marks Latest while it has entries.
 var latestYellow = lipgloss.Color("#F4B860")
+
+// latestOrange marks new Latest entries.
+var latestOrange = lipgloss.Color("#F28C28")
+
+// latestLabel is the sidebar label, with the count of new entries.
+func (m Model) latestLabel() string {
+	if m.latestUnseen > 0 {
+		return fmt.Sprintf("⏱ Latest (%d)", m.latestUnseen)
+	}
+	return "⏱ Latest"
+}
 
 // persistedRecent is the on-disk form of a Latest entry. It keeps the conversation
 // and message, so an entry opens after a restart.

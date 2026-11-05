@@ -186,7 +186,7 @@ func SavePreferences(path string, ai inference.Settings, theme string, sound boo
 		section, key string
 		value        any
 	}{
-		{"ai", "enabled", ai.Enabled}, {"ai", "base_url", ai.BaseURL}, {"ai", "api_key", ai.APIKey}, {"ai", "chat_model", ai.ChatModel}, {"ai", "embedding_model", ai.EmbeddingModel},
+		{"ai", "enabled", ai.Enabled}, {"ai", "base_url", ai.BaseURL}, {"ai", "api_key", ai.APIKey}, {"ai", "chat_model", ai.ChatModel}, {"ai", "embedding_model", ai.EmbeddingModel}, {"ai", "transcription_model", ai.TranscriptionModel},
 		{"ui", "theme", theme}, {"notifications", "enabled", sound}, {"sidebar", "recent_days", days},
 	}
 	for _, entry := range entries {
