@@ -48,7 +48,7 @@ type imageMsg struct {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	switch event := msg.(type) {
-	case imageMsg, historyMsg, parentHistoryMsg, threadsMsg, emojisMsg, reactionsMsg, summaryMsg, preferencesSaved:
+	case imageMsg, historyMsg, parentHistoryMsg, threadsMsg, emojisMsg, reactionsMsg, bgResult, preferencesSaved:
 		m.imageParent = nil
 	case slack.LiveEvent:
 		if event.Type == "message" {

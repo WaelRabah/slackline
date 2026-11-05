@@ -57,13 +57,3 @@ func chime(ctx context.Context) tea.Cmd {
 	path, _ := chimeSource()
 	return playSound(ctx, path)
 }
-
-// unreadsSucceeded reports whether every channel in a run was summarized.
-func unreadsSucceeded(msg unreadsMsg) bool {
-	for _, section := range msg.sections {
-		if section.err != "" {
-			return false
-		}
-	}
-	return true
-}

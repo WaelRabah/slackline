@@ -106,6 +106,11 @@ type Model struct {
 	recent            []recentItem
 	recentSeen        map[string]bool
 	latestIndex       int
+	bgQueue           []bgJob
+	bgActive          map[string]bool
+	bgRunning         int
+	unreadPending     int
+	unreadOK          bool
 	summaryViewport   viewport.Model
 	directory         []slack.User
 	finderGeneration  int
@@ -337,28 +342,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case dictationMsg:
 		return m.finishDictation(msg), nil
-	case summaryMsg:
-		delete(m.summaryBusy, msg.channel)
-		if msg.err != nil {
-			m.setError(msg.err)
-		} else {
-			m.summaries[msg.channel] = msg.summary
-			if len(m.summaries) > 128 {
-				oldest := ""
-				for id, summary := range m.summaries {
-					if oldest == "" || summary.Generated.Before(m.summaries[oldest].Generated) {
-						oldest = id
-					}
-				}
-				delete(m.summaries, oldest)
-			}
-			m.status = "Private summary updated · S expands"
-			if err := m.SaveState(); err != nil {
-				m.setError(err)
-			}
-		}
-		m.resize()
-		return m, nil
+
 	case preferencesSaved:
 		if m.settings != nil {
 			m.settings.busy = false
@@ -641,6 +625,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m.updateNormal(msg)
+	case tea.MouseClickMsg:
+		cmd := m.mouseClick(msg)
+		return m, cmd
 	case tea.PasteMsg:
 		// Pasting never executes navigation commands or sends a message.
 		if m.mode == insert && !m.sending {
@@ -881,21 +868,7 @@ func (m *Model) updateNormal(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	case "enter":
 		if m.focus == sidebar {
-			if row, ok := m.sidebarSelection(); ok && row.destination != "" {
-				cmd := m.openDestination(row.destination)
-				return *m, cmd
-			}
-			if row, ok := m.sidebarSelection(); ok && row.index < 0 {
-				m.toggleSection()
-				return *m, nil
-			}
-			row, ok := m.sidebarSelection()
-			if !ok {
-				return *m, nil
-			}
-			m.selected = row.index
-			cmd := m.openSelected()
-			return *m, cmd
+			return *m, m.activateSidebar()
 		}
 		if m.focus == messages && m.destination == threadsDestination {
 			cmd := m.openFeedThread()
@@ -1505,19 +1478,7 @@ func (m Model) View() tea.View {
 		rows := m.sidebarRows()
 		cursor := m.sidebarPosition(rows)
 		count := max(1, m.viewport.Height())
-		shown := []int{}
-		pinned := min(pinnedRows, len(rows), count)
-		if count <= pinnedRows {
-			pinned = 0
-		}
-		for i := 0; i < pinned; i++ {
-			shown = append(shown, i)
-		}
-		remaining := count - pinned
-		start := max(pinned, cursor-remaining+1)
-		for i := start; i < min(len(rows), start+remaining); i++ {
-			shown = append(shown, i)
-		}
+		shown := m.sidebarShown(rows, cursor, count)
 		lines := []string{}
 		for _, i := range shown {
 			row := rows[i]
@@ -1631,6 +1592,7 @@ func (m Model) View() tea.View {
 	composerPane := m.paneFrame(composerLabel, composerBody, m.width, 4, m.focus == composer && m.mode != finder)
 	content = title.Render(header) + "\n\n" + content + "\n" + composerPane + "\n" + lipgloss.NewStyle().Foreground(muted).MaxWidth(m.width).Render(footer) + "\n" + lipgloss.NewStyle().Foreground(muted).MaxWidth(m.width).Render(help)
 	view := tea.NewView(lipgloss.NewStyle().MaxWidth(m.width).MaxHeight(m.height).Render(content))
+	view.MouseMode = tea.MouseModeCellMotion
 	view.AltScreen = true
 	return view
 }

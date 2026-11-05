@@ -47,15 +47,21 @@ func TestUnreadBlocksCycleAndWrap(t *testing.T) {
 	}
 }
 
-func TestUnreadsViewShowsOneBlockWithRenamedTitle(t *testing.T) {
+func TestUnreadsViewShowsEachBlockInItsOwnBox(t *testing.T) {
 	m := blockModel()
 	m.viewport.SetWidth(80)
 	view := ansiStrip(m.unreadsView())
-	if !strings.Contains(view, "Unreads Summaries · 3 channels") || !strings.Contains(view, "block 1 of 3") {
+	if !strings.Contains(view, "Unreads Summaries · 3 channels") {
 		t.Fatalf("unexpected header: %q", view)
 	}
-	if strings.Contains(view, "deploy done") {
-		t.Fatal("more than one block shown at once")
+	for _, label := range []string{"general", "ops", "random"} {
+		if !strings.Contains(view, label) {
+			t.Fatalf("block %q missing", label)
+		}
+	}
+	// Each block has its own top and bottom border.
+	if strings.Count(view, "╭") < 3 || strings.Count(view, "╰") < 3 {
+		t.Fatal("blocks are not drawn in separate boxes")
 	}
 	if strings.Contains(view, "**") {
 		t.Fatal("markdown markers were not rendered")

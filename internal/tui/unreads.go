@@ -9,7 +9,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/WaelRabah/slackline/internal/inference"
 	"github.com/WaelRabah/slackline/internal/slack"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -27,12 +26,6 @@ type unreadSection struct {
 	text, err      string
 	partial        bool
 	after, latest  string
-}
-
-type unreadsMsg struct {
-	signature string
-	sections  []unreadSection
-	generated time.Time
 }
 
 // markedBlockMsg reports a finished mark-as-read for one channel block.
@@ -145,60 +138,6 @@ func (m *Model) refreshUnreads() tea.Cmd {
 	return m.runUnreads(m.unreadSignature())
 }
 
-func (m *Model) runUnreads(sig string) tea.Cmd {
-	api, ok := m.api.(slack.UnreadsAPI)
-	if !ok {
-		m.status = "Unread messages are unavailable for this backend"
-		return nil
-	}
-	items := m.unreadItems()
-	if len(items) == 0 {
-		return nil
-	}
-	if len(items) > unreadsChannels {
-		items = items[:unreadsChannels]
-	}
-	ctx, provider, team, self := m.ctx, m.provider, m.session.TeamID, m.session.UserID
-	names := map[string]string{}
-	for id, name := range m.users {
-		names[id] = name
-	}
-	m.unreadBusy = true
-	m.status = fmt.Sprintf("Summarizing unreads in %d channels…", len(items))
-	m.renderDestination()
-	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(ctx, 8*time.Minute)
-		defer cancel()
-		var sections []unreadSection
-		for _, target := range items {
-			section := unreadSection{channel: target.id, label: target.label, after: target.after, latest: target.latest}
-			page, err := api.UnreadMessages(ctx, target.id, target.after, target.latest, self)
-			if err != nil {
-				section.err = cleanLine(err.Error())
-				sections = append(sections, section)
-				continue
-			}
-			messages := mergeUnreadMessages(page.Messages, target.threadReplies)
-			section.count = len(messages)
-			section.partial = page.Partial
-			if len(messages) == 0 {
-				sections = append(sections, section)
-				continue
-			}
-			transcript, trimmed := buildUnreadTranscript(team, names, target.id, messages)
-			section.partial = section.partial || trimmed
-			text, err := inference.Categorize(ctx, provider, target.label, transcript, section.partial)
-			if err != nil {
-				section.err = cleanLine(err.Error())
-			} else {
-				section.text = clean(text)
-			}
-			sections = append(sections, section)
-		}
-		return unreadsMsg{signature: sig, sections: sections, generated: time.Now()}
-	}
-}
-
 // mergeUnreadMessages joins channel-level and thread unreads, oldest first, without duplicates.
 func mergeUnreadMessages(channel, threads []slack.Message) []slack.Message {
 	seen := map[string]bool{}
@@ -246,30 +185,6 @@ func buildUnreadTranscript(team string, names map[string]string, channel string,
 		out.WriteString(line)
 	}
 	return out.String(), false
-}
-
-// applyUnreads stores a finished run. Blocks already shown keep their place and
-// are updated in place; blocks are removed only by mark-as-read.
-func (m *Model) applyUnreads(msg unreadsMsg) tea.Cmd {
-	m.unreadBusy = false
-	m.unreadSections = mergeSections(m.unreadSections, msg.sections)
-	m.unreadSig = msg.signature
-	m.unreadStamp = msg.generated
-	failed := 0
-	for _, section := range msg.sections {
-		if section.err != "" {
-			failed++
-		}
-	}
-	if failed > 0 {
-		m.status = fmt.Sprintf("Unreads summarized with %d failed channel(s)", failed)
-	} else {
-		m.status = "Unreads summarized by channel"
-	}
-	if m.destination == unreadsDestination {
-		m.renderDestination()
-	}
-	return nil
 }
 
 // mergeSections updates blocks that exist and appends new ones, keeping order.
@@ -414,57 +329,79 @@ func (m *Model) dropUnreadBlock(msg markedBlockMsg) {
 	}
 }
 
-// unreadsView renders one framed block at a time, styled like a message block:
-// the channel on the top border and the newest message time on the right.
+// unreadsView renders every block, each in its own box.
 func (m Model) unreadsView() string {
+	view, _ := m.unreadsLayout()
+	return view
+}
+
+// unreadsLayout stacks one box per unread block. It also returns the first line of
+// the selected block, so the view can scroll to it.
+func (m Model) unreadsLayout() (string, int) {
 	width := max(1, m.viewport.Width())
-	inner := max(1, width-4)
 	muted := lipgloss.NewStyle().Foreground(m.muted())
-	accent := lipgloss.NewStyle().Bold(true).Foreground(m.accent())
+	bold := lipgloss.NewStyle().Bold(true)
 	items := m.unreadItems()
 	sections := map[string]unreadSection{}
 	for _, section := range m.unreadSections {
 		sections[section.channel] = section
 	}
 	var b strings.Builder
-	b.WriteString(lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf("Unreads Summaries · %d channels", len(items))) + "\n")
+	b.WriteString(bold.Render(fmt.Sprintf("Unreads Summaries · %d channels", len(items))) + "\n")
 	switch {
 	case m.demo:
 		b.WriteString(muted.Render("Unread summaries are offline in the demo.") + "\n")
 	case !m.provider.Ready():
 		b.WriteString(muted.Render("Showing counts only. Enable AI in Settings (,) for categorized summaries.") + "\n")
 	case m.unreadBusy:
-		b.WriteString(muted.Render("Summarizing… this can take a minute for many channels.") + "\n")
+		b.WriteString(muted.Render("Summarizing in the background; blocks fill in as they finish.") + "\n")
 	case !m.unreadStamp.IsZero():
 		b.WriteString(muted.Render("Summarized "+m.unreadStamp.Local().Format("Jan 02 15:04")) + "\n")
 	}
 	if len(items) == 0 {
 		b.WriteString("\nAll caught up. No unread messages.")
-		return ansi.Hardwrap(b.String(), width, true)
+		return ansi.Hardwrap(b.String(), width, true), 0
 	}
 	index := min(m.unreadIndex, len(items)-1)
-	target := items[index]
-	section, ok := sections[target.id]
+	selectedLine := 0
+	for i, target := range items {
+		if i == index {
+			selectedLine = strings.Count(b.String(), "\n")
+		}
+		section, ok := sections[target.id]
+		b.WriteString("\n" + m.unreadBox(target, section, ok, i == index, width) + "\n")
+	}
+	b.WriteString("\n" + muted.Render("n/p next/previous block · x mark read · s refresh"))
+	return b.String(), selectedLine
+}
 
+// unreadBox draws one block in its own box: channel and newest time on the top
+// border, the unread count, then the summary or its status.
+func (m Model) unreadBox(target unreadTarget, section unreadSection, summarized, selected bool, width int) string {
+	inner := max(1, width-4)
+	muted := lipgloss.NewStyle().Foreground(m.muted())
+	accent := lipgloss.NewStyle().Bold(true).Foreground(m.accent())
 	stamp := ""
 	if at := slack.TimestampTime(target.latest); !at.IsZero() {
 		stamp = at.Local().Format("Jan 02 15:04")
 	}
-	title := "► " + target.label
+	title := target.label
+	if selected {
+		title = "► " + title
+	}
 	left := ansi.Truncate(title, max(1, inner-lipgloss.Width(stamp)-1), "…")
 	header := accent.Render(left)
 	if gap := inner - lipgloss.Width(left) - lipgloss.Width(stamp); gap > 0 {
 		header += strings.Repeat(" ", gap) + muted.Render(stamp)
 	}
-
 	var body strings.Builder
-	body.WriteString(muted.Render(fmt.Sprintf("%d unread · block %d of %d", target.count, index+1, len(items))) + "\n\n")
+	body.WriteString(muted.Render(fmt.Sprintf("%d unread", target.count)) + "\n")
 	switch {
 	case m.markingUnread[target.id]:
 		body.WriteString(muted.Render("Marking this block read…"))
-	case !ok && m.unreadBusy:
+	case !summarized && m.unreadBusy:
 		body.WriteString(muted.Render("Waiting for summary…"))
-	case !ok:
+	case !summarized:
 		body.WriteString(muted.Render("Not summarized yet. Press s to summarize."))
 	case section.err != "":
 		body.WriteString("Could not summarize: " + section.err)
@@ -473,11 +410,12 @@ func (m Model) unreadsView() string {
 	default:
 		body.WriteString(renderMarkdown(section.text, inner))
 	}
-	if ok && section.partial {
-		body.WriteString("\n\n" + muted.Render("Partial: some unread messages were not read."))
+	if summarized && section.partial {
+		body.WriteString("\n" + muted.Render("Partial: some unread messages were not read."))
 	}
-	frame := lipgloss.NewStyle().Width(width).Padding(0, 1).Border(lipgloss.RoundedBorder()).BorderForeground(m.accent()).Render(header + "\n" + body.String())
-	b.WriteString("\n" + frame + "\n")
-	b.WriteString(muted.Render("n/p next/previous block · x mark read · s refresh"))
-	return b.String()
+	border := m.muted()
+	if selected {
+		border = m.accent()
+	}
+	return lipgloss.NewStyle().Width(width).Padding(0, 1).Border(lipgloss.RoundedBorder()).BorderForeground(border).Render(header + "\n" + body.String())
 }

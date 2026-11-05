@@ -85,8 +85,10 @@ func (m *Model) renderDestination() {
 		return
 	}
 	if m.destination == unreadsDestination {
-		m.viewport.SetContent(m.unreadsView())
-		m.viewport.GotoTop()
+		view, selected := m.unreadsLayout()
+		m.viewport.SetContent(view)
+		m.viewport.SetYOffset(selected)
+
 		return
 	}
 	if m.destination == threadsDestination {
