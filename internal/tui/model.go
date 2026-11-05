@@ -92,6 +92,9 @@ type Model struct {
 	summaries         map[string]conversationSummary
 	summaryBusy       map[string]bool
 	dictating         bool
+	latestSeen        map[string]string
+	assistant         []assistantTurn
+	assistantBusy     bool
 	summaryViewport   viewport.Model
 	directory         []slack.User
 	finderGeneration  int
@@ -178,6 +181,7 @@ func New(ctx context.Context, api slack.API, session slack.Session, demo bool, o
 	m.reactionSnapshots = map[string]reactionSnapshot{}
 	m.summaries = map[string]conversationSummary{}
 	m.summaryBusy = map[string]bool{}
+	m.latestSeen = map[string]string{}
 	m.summaryViewport = viewport.New(viewport.WithWidth(70), viewport.WithHeight(20))
 	m.now = time.Now
 	m.startedAt = m.now()
@@ -715,7 +719,8 @@ func (m *Model) updateNormal(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.updateMatches()
 		return *m, m.query.Focus()
 	case "i", "a", "A", "I":
-		if m.active == "" || m.sending {
+		assistant := m.destination == aiAssistant && m.provider.Ready() && !m.demo
+		if (m.active == "" && !assistant) || m.sending || (assistant && m.assistantBusy) {
 			return *m, nil
 		}
 		m.focus = composer
@@ -981,6 +986,9 @@ func (m *Model) fetchHistory(cursor string) tea.Cmd {
 
 func (m *Model) send() tea.Cmd {
 	text := m.input.Value()
+	if m.destination == aiAssistant {
+		return m.askAssistant()
+	}
 	if m.destination != "" || m.active == "" || m.sending || strings.TrimSpace(text) == "" || !m.canRequest() {
 		return nil
 	}
@@ -1575,9 +1583,12 @@ func (m Model) View() tea.View {
 		help = "Type to filter · Ctrl+j/k select · Enter opens · Esc closes"
 	}
 	composerLabel, composerBody := "COMPOSER · "+modeLabel, m.input.View()
-	if m.destination == aiAssistant || m.destination == aiSummaries {
+	if m.destination == aiAssistant && m.provider.Ready() && !m.demo {
+		composerLabel = "ASK · Enter sends"
+		composerBody = m.input.View()
+	} else if m.destination == aiAssistant || m.destination == aiSummaries {
 		composerLabel = "AI DISABLED"
-		composerBody = "Workspace assistant/daily digests are not available yet. Use s inside a conversation for a private summary."
+		composerBody = "Enable AI and set a chat model in Settings (,). Conversation summaries run automatically."
 	}
 	if m.destination == threadsDestination {
 		composerLabel = "THREADS"

@@ -64,6 +64,15 @@ func (m *Model) renderDestination() {
 	if m.destination == "" {
 		return
 	}
+	if m.destination == aiAssistant && m.provider.Ready() && !m.demo {
+		if len(m.assistant) == 0 && !m.assistantBusy {
+			m.viewport.SetContent("Ask about your Slack conversations.\n\nQuestions use messages from the last 14 days in your first 15 conversations. Answers cite Slack links; check them before acting.")
+		} else {
+			m.viewport.SetContent(m.assistantView())
+		}
+		m.viewport.GotoBottom()
+		return
+	}
 	title := "Ask about your Slack conversations"
 	detail := "Ask questions and send prompts about conversations from the last 14 days."
 	if m.destination == aiSummaries {

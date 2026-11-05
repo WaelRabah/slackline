@@ -10,20 +10,40 @@ import (
 	"time"
 )
 
-func TestContextIncludesRepliesAndChecksExactWindowAndChannel(t *testing.T) {
+func TestContextReadsHistoryAndThreadRepliesInWindow(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
-		if r.URL.Path != "/search.messages" || !strings.Contains(r.Form.Get("query"), "in:C1 after:") {
-			t.Error("wrong scoped search")
+		switch r.URL.Path {
+		case "/conversations.history":
+			if r.Form.Get("channel") != "C1" || r.Form.Get("oldest") == "" || r.Form.Get("latest") == "" {
+				t.Error("history call missing channel or window")
+			}
+			fmt.Fprint(w, `{"ok":true,"messages":[
+				{"ts":"1792188000.000001","text":"root with replies","reply_count":1},
+				{"ts":"1792188000.000002","text":"plain"},
+				{"ts":"1700000000.000001","text":"too old"},
+				{"ts":"1892188000.000001","text":"future"}],"has_more":false}`)
+		case "/conversations.replies":
+			if r.Form.Get("ts") != "1792188000.000001" {
+				t.Error("replies requested for the wrong thread")
+			}
+			fmt.Fprint(w, `{"ok":true,"messages":[
+				{"ts":"1792188000.000001","text":"root with replies"},
+				{"ts":"1792188100.000001","thread_ts":"1792188000.000001","text":"reply"}],"has_more":false}`)
+		default:
+			t.Errorf("unexpected call %s", r.URL.Path)
 		}
-		fmt.Fprint(w, `{"ok":true,"messages":{"paging":{"pages":1},"matches":[{"ts":"1792188000.000001","thread_ts":"1790000000.000001","text":"reply on old root","channel":{"id":"C1"}},{"ts":"1792188000.000002","text":"wrong channel","channel":{"id":"C2"}},{"ts":"1700000000.000001","text":"old","channel":{"id":"C1"}},{"ts":"1892188000.000001","text":"future","channel":{"id":"C1"}}]}}`)
 	}))
 	defer server.Close()
-	c := testClientForContext(server)
 	until := time.Unix(1792200000, 0)
-	page, err := c.ConversationContext(context.Background(), "C1", until.Add(-14*24*time.Hour), until)
-	if err != nil || len(page.Messages) != 1 || page.Messages[0].ThreadTS != "1790000000.000001" || page.Partial {
-		t.Fatal("context scope or thread inclusion failed", err)
+	page, err := testClientForContext(server).ConversationContext(context.Background(), "C1", until.Add(-14*24*time.Hour), until)
+	if err != nil || page.Partial || len(page.Messages) != 3 {
+		t.Fatalf("unexpected page %+v, %v", page, err)
+	}
+	for _, message := range page.Messages {
+		if message.Channel != "C1" {
+			t.Fatal("message lost its channel")
+		}
 	}
 }
 func testClientForContext(server *httptest.Server) *Client {
@@ -57,19 +77,20 @@ func TestContextPaginationLimitIsExplicitAndErrorsDiscardPartial(t *testing.T) {
 			fmt.Fprint(w, `{"ok":false,"error":"ratelimited"}`)
 			return
 		}
-		fmt.Fprint(w, `{"ok":true,"messages":{"paging":{"pages":11},"matches":[{"ts":"1792188000.000001","text":"fixture","channel":{"id":"C1"}}]}}`)
+		// Always report more pages so the cap is what stops the read.
+		fmt.Fprint(w, `{"ok":true,"messages":[{"ts":"1792188000.000001","text":"fixture"}],"has_more":true,"response_metadata":{"next_cursor":"next"}}`)
 	}))
 	defer server.Close()
 	until := time.Unix(1792200000, 0)
 	client := testClientForContext(server)
 	page, err := client.ConversationContext(context.Background(), "C1", until.Add(-14*24*time.Hour), until)
-	if err != nil || calls != 10 || !page.Partial || len(page.Messages) != 1 {
-		t.Fatal("pagination cap or dedup is not explicit")
+	if err != nil || calls != contextHistoryPages || !page.Partial || len(page.Messages) != 1 {
+		t.Fatalf("pagination cap or dedup is not explicit: calls=%d page=%+v err=%v", calls, page, err)
 	}
 	calls = 0
 	fail = true
 	page, err = client.ConversationContext(context.Background(), "C1", until.Add(-14*24*time.Hour), until)
-	if err == nil || len(page.Messages) != 0 {
+	if err == nil || len(page.Messages) != 0 || !strings.Contains(err.Error(), "ratelimited") {
 		t.Fatal("presented failed partial fetch as complete")
 	}
 }
