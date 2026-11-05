@@ -34,6 +34,9 @@ type summaryMsg struct {
 
 // summarizeConversation handles the manual s key: it always regenerates.
 func (m *Model) summarizeConversation() tea.Cmd {
+	if m.destination == unreadsDestination {
+		return m.refreshUnreads()
+	}
 	if m.active == "" || m.destination != "" {
 		m.status = "Open a conversation to summarize it"
 		return nil
@@ -110,6 +113,8 @@ func (m *Model) summaryHook(msg tea.Msg) tea.Cmd {
 		}
 	case assistantMsg:
 		m.recordAnswer(event)
+	case unreadsMsg:
+		return m.applyUnreads(event)
 	}
 	return nil
 }

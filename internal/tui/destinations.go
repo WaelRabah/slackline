@@ -16,8 +16,9 @@ const (
 	aiAssistant        = "ai-assistant"
 	aiSummaries        = "ai-summaries"
 	threadsDestination = "threads"
+	unreadsDestination = "unreads"
 )
-const pinnedRows = 3
+const pinnedRows = 4
 const threadInterval = 30 * time.Second
 
 type threadsTick struct{ generation int }
@@ -52,11 +53,21 @@ func (m *Model) openDestination(id string) tea.Cmd {
 		}
 		return nil
 	}
+	if id == unreadsDestination {
+		m.status = "Unreads · summarized by channel"
+		m.renderDestination()
+		return m.autoUnreads()
+	}
 	m.status = "AI workspace views disabled · conversation summaries available with s"
 	m.renderDestination()
 	return nil
 }
 func (m *Model) renderDestination() {
+	if m.destination == unreadsDestination {
+		m.viewport.SetContent(m.unreadsView())
+		m.viewport.GotoTop()
+		return
+	}
 	if m.destination == threadsDestination {
 		m.renderThreads()
 		return

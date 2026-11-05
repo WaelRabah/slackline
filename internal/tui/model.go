@@ -95,6 +95,10 @@ type Model struct {
 	latestSeen        map[string]string
 	assistant         []assistantTurn
 	assistantBusy     bool
+	unreadSections    []unreadSection
+	unreadBusy        bool
+	unreadSig         string
+	unreadStamp       time.Time
 	summaryViewport   viewport.Model
 	directory         []slack.User
 	finderGeneration  int
@@ -1589,6 +1593,10 @@ func (m Model) View() tea.View {
 	} else if m.destination == aiAssistant || m.destination == aiSummaries {
 		composerLabel = "AI DISABLED"
 		composerBody = "Enable AI and set a chat model in Settings (,). Conversation summaries run automatically."
+	}
+	if m.destination == unreadsDestination {
+		composerLabel = "UNREADS"
+		composerBody = "Read-only · s refreshes the summary · open a channel from the sidebar to reply"
 	}
 	if m.destination == threadsDestination {
 		composerLabel = "THREADS"

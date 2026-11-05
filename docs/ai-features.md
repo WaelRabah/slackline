@@ -32,6 +32,12 @@ Generate a daily catch-up and a return-to-client catch-up covering unread/missed
 
 A local last-client-visit timestamp is persisted now. Slack's per-conversation read markers are also tracked. Neither provides an exact global last-login timestamp across all native Slack clients, and the future catch-up must explain its coverage accordingly. Scheduling, daily delivery time, summary persistence/deduplication, and any operation while the app is closed belong to the inference integration phase. No background daemon is installed now.
 
+## Unreads channel
+
+The sidebar's "Unreads" entry lists every conversation with unread messages, most unread first. With AI enabled, each channel's unread messages are read in the unread range and sorted into "To reply", "To do", "Decisions and updates" and "FYI" with source links. Thread replies from the Threads feed are included when that feed has loaded. Each channel is summarized separately, so nothing is mixed across channels.
+
+It runs when the view opens and reruns only if the set of unread channels or their newest messages changed. `s` always regenerates. Up to 20 channels per run and 40 KB of transcript per channel; anything cut off is labeled partial. Unread messages are read only, never marked as read, and nothing is posted. Without AI, the view still shows counts.
+
 ## Activation work
 
 Extend the on-demand provider and collection pipeline into workspace retrieval, persist coverage watermarks, and implement daily scheduling before enabling the workspace destinations. Keep credentials private. Any AI draft intended for Slack must remain an explicit user-confirmed post; these local destinations never become real Slack channels.
