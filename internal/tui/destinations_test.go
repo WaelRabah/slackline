@@ -37,7 +37,7 @@ func TestPinnedAIDestinationsRemainDisabledAndPreserveDrafts(t *testing.T) {
 		t.Fatal("AI navigation lost Slack draft")
 	}
 	rows := m.sidebarRows()
-	if rows[0].destination != aiAssistant || rows[1].destination != aiSummaries || rows[2].destination != threadsDestination {
+	if rows[0].destination != latestDestination || rows[1].destination != aiAssistant || rows[2].destination != aiSummaries || rows[3].destination != threadsDestination {
 		t.Fatal("destinations are not pinned first")
 	}
 	next, _ := m.Update(historyMsg{channel: original, generation: m.generation - 1, history: slack.History{Messages: []slack.Message{{TS: "100.1", Text: "stale"}}}})

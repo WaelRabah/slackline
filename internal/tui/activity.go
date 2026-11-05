@@ -3,8 +3,6 @@ package tui
 import (
 	"context"
 	"fmt"
-	"os/exec"
-	"runtime"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -144,14 +142,9 @@ func (m Model) sidebarTitle() string {
 	}
 	return "CHANNELS · ALL"
 }
+
+// notification plays the incoming-message sound: the Slack app's own sound when installed.
 func notification(ctx context.Context) tea.Cmd {
-	if runtime.GOOS != "darwin" {
-		return tea.Raw("\a")
-	}
-	return func() tea.Msg {
-		soundCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-		defer cancel()
-		err := exec.CommandContext(soundCtx, "/usr/bin/afplay", "/System/Library/Sounds/Glass.aiff").Run()
-		return soundDoneMsg{fallback: err != nil && ctx.Err() == nil}
-	}
+	path, _ := chimeSource()
+	return playSound(ctx, path)
 }

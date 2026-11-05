@@ -15,6 +15,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/WaelRabah/slackline/internal/auth"
 	"github.com/WaelRabah/slackline/internal/config"
+	"github.com/WaelRabah/slackline/internal/media"
 	"github.com/WaelRabah/slackline/internal/slack"
 	"github.com/WaelRabah/slackline/internal/tui"
 	"golang.org/x/term"
@@ -95,6 +96,9 @@ func run() error {
 	if command == "auth check" {
 		fmt.Println("Slack session is valid.")
 		return nil
+	}
+	if cfg.UI.CellAspect > 0 {
+		media.CellAspect = cfg.UI.CellAspect
 	}
 	opts := tui.Options{ConfigPath: *path, Provider: cfg.AI, Theme: cfg.UI.Theme, SoundEnabled: cfg.Notifications.Enabled, RecentDays: cfg.Sidebar.RecentDays}
 	if !*demo {

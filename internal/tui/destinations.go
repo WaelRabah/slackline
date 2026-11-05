@@ -18,7 +18,7 @@ const (
 	threadsDestination = "threads"
 	unreadsDestination = "unreads"
 )
-const pinnedRows = 4
+const pinnedRows = 5
 const threadInterval = 30 * time.Second
 
 type threadsTick struct{ generation int }
@@ -55,6 +55,11 @@ func (m *Model) openDestination(id string) tea.Cmd {
 		}
 		return nil
 	}
+	if id == latestDestination {
+		m.status = "Latest · newest first"
+		m.renderDestination()
+		return nil
+	}
 	if id == aiSummaries && m.provider.Ready() && !m.demo {
 		m.status = "Your catch-up · s refreshes"
 		m.renderDestination()
@@ -70,6 +75,10 @@ func (m *Model) openDestination(id string) tea.Cmd {
 	return nil
 }
 func (m *Model) renderDestination() {
+	if m.destination == latestDestination {
+		m.viewport.SetContent(m.latestView())
+		return
+	}
 	if m.destination == aiSummaries && m.provider.Ready() && !m.demo {
 		m.viewport.SetContent(m.catchUpView())
 		m.viewport.GotoTop()

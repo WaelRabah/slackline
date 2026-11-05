@@ -24,7 +24,8 @@ type Config struct {
 	} `toml:"slack"`
 	AI inference.Settings `toml:"ai"`
 	UI struct {
-		Theme string `toml:"theme"`
+		Theme      string  `toml:"theme"`
+		CellAspect float64 `toml:"cell_aspect"` // terminal cell height / width, used to keep images in proportion
 	} `toml:"ui"`
 }
 
