@@ -20,5 +20,5 @@ func CatchUp(ctx context.Context, settings Settings, transcript string, partial 
 	if partial {
 		coverage = "Coverage: partial. Some unread messages were not read."
 	}
-	return complete(ctx, settings, catchUpSystem, coverage+"\n\nUnread messages by conversation:\n"+transcript, 4000)
+	return complete(ctx, settings, catchUpSystem, coverage+"\n\nUnread messages by conversation:\n"+transcript, 6000)
 }
