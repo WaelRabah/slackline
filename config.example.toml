@@ -9,6 +9,7 @@ base_url = "https://api.compactif.ai/v1"
 api_key = ""
 chat_model = ""
 embedding_model = ""
+transcription_model = "" # speech to text: model for /v1/audio/transcriptions; empty disables it
 
 [notifications]
 enabled = true # macOS Glass sound only for actual incoming live messages

@@ -91,6 +91,7 @@ type Model struct {
 	settings          *settingsState
 	summaries         map[string]conversationSummary
 	summaryBusy       map[string]bool
+	dictating         bool
 	summaryViewport   viewport.Model
 	directory         []slack.User
 	finderGeneration  int
@@ -319,6 +320,8 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.thread.history = mergeMessages(m.thread.history, filtered)
 		m.thread.cursor = msg.history.ResponseMetadata.NextCursor
 		return m, nil
+	case dictationMsg:
+		return m.finishDictation(msg), nil
 	case summaryMsg:
 		delete(m.summaryBusy, msg.channel)
 		if msg.err != nil {
@@ -611,6 +614,8 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case "enter":
 				return m, m.send()
+			case "ctrl+t":
+				return m, m.dictate()
 			}
 			if !m.sending {
 				var cmd tea.Cmd
