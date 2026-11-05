@@ -105,6 +105,12 @@ func (m *Model) summaryHook(msg tea.Msg) tea.Cmd {
 		}
 	case activityMsg:
 		return m.backgroundRefresh()
+	case imageOpenedMsg:
+		if event.err != nil {
+			m.setError(event.err)
+		} else {
+			m.status = "Image opened in the system viewer"
+		}
 	case assistantMsg:
 		m.recordAnswer(event)
 	case bgResult:
