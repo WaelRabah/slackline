@@ -106,6 +106,7 @@ type Model struct {
 	recent            []recentItem
 	recentSeen        map[string]bool
 	latestIndex       int
+	latestUnseen      int
 	bgQueue           []bgJob
 	bgActive          map[string]bool
 	bgRunning         int
@@ -1519,7 +1520,7 @@ func (m Model) View() tea.View {
 				label = lipgloss.NewStyle().Bold(true).Foreground(muted).Render(label)
 			}
 			if row.destination == latestDestination && len(m.recent) > 0 && !(i == cursor && m.focus == sidebar) {
-				label = lipgloss.NewStyle().Bold(true).Foreground(latestYellow).Render(label)
+				label = lipgloss.NewStyle().Bold(true).Foreground(m.latestColor()).Render(label)
 			}
 			lines = append(lines, label)
 		}
