@@ -21,5 +21,5 @@ func Categorize(ctx context.Context, settings Settings, label, transcript string
 		coverage = "Coverage: partial. Some unread messages were not read."
 	}
 	user := coverage + "\n\nConversation: " + label + "\n\nUnread messages:\n" + transcript
-	return complete(ctx, settings, categorizeSystem, user, 900)
+	return complete(ctx, settings, categorizeSystem, user, 4000)
 }

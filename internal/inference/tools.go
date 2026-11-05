@@ -50,7 +50,8 @@ func Assist(ctx context.Context, settings Settings, system, question string, too
 	}
 	messages := []map[string]any{{"role": "system", "content": system}, {"role": "user", "content": question}}
 	for round := 0; round < maxToolRounds; round++ {
-		payload := map[string]any{"model": settings.ChatModel, "stream": false, "messages": messages, "tools": specs, "tool_choice": "auto", "max_tokens": 3000}
+		payload := map[string]any{"model": settings.ChatModel, "stream": false, "messages": messages, "tools": specs, "tool_choice": "auto", "max_tokens": 6000}
+		withoutReasoning(payload, settings)
 		choice, err := postChat(ctx, settings, payload)
 		if err != nil {
 			return "", err

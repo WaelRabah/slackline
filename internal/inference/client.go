@@ -64,31 +64,46 @@ func Summarize(ctx context.Context, settings Settings, transcript string) (strin
 	if err := settings.Validate(); err != nil {
 		return "", err
 	}
-	return complete(ctx, settings, summarySystem, transcript, 900)
+	return complete(ctx, settings, summarySystem, transcript, 4000)
 }
 
 // complete posts one non-streaming chat-completions request. The user message is
 // untrusted Slack content; callers must keep their instructions in system.
+// Reasoning models spend part of the budget before writing the answer. If the
+// answer comes back empty because the budget ran out, the request is retried
+// once with a larger budget.
 func complete(ctx context.Context, settings Settings, system, user string, maxTokens int) (string, error) {
-	payload := map[string]any{"model": settings.ChatModel, "stream": false, "messages": []map[string]string{{"role": "system", "content": system}, {"role": "user", "content": user}}, "max_tokens": maxTokens}
-	choice, err := postChat(ctx, settings, payload)
-	if err != nil {
-		return "", err
+	budget := maxTokens
+	for attempt := 0; attempt < 2; attempt++ {
+		payload := map[string]any{"model": settings.ChatModel, "stream": false, "messages": []map[string]string{{"role": "system", "content": system}, {"role": "user", "content": user}}, "max_tokens": budget}
+		withoutReasoning(payload, settings)
+		choice, err := postChat(ctx, settings, payload)
+		if err != nil {
+			return "", err
+		}
+		out := strings.TrimSpace(choice.Message.Content)
+		if out != "" {
+			if len(out) > 16000 {
+				return "", errors.New("provider answer exceeded size limit")
+			}
+			if choice.Finish == "length" {
+				return cutOff(out), nil
+			}
+			return out, nil
+		}
+		if choice.Finish != "length" {
+			return "", errors.New("provider returned no answer")
+		}
+		budget = min(budget*3, 12000)
 	}
-	if strings.TrimSpace(choice.Message.Content) == "" {
-		return "", errors.New("provider returned no answer")
+	return "", errors.New("the model used its answer budget on reasoning and wrote no answer; try again later")
+}
+
+// withoutReasoning asks Compactif to keep hidden reasoning out of the answer budget.
+func withoutReasoning(payload map[string]any, settings Settings) {
+	if strings.Contains(settings.BaseURL, "compactif.ai") {
+		payload["chat_template_kwargs"] = map[string]any{"clear_thinking": true}
 	}
-	if choice.Finish == "length" && strings.TrimSpace(choice.Message.Content) != "" {
-		return cutOff(strings.TrimSpace(choice.Message.Content)), nil
-	}
-	if choice.Finish == "length" {
-		return "", errors.New("provider truncated the answer; try a model with a larger output limit")
-	}
-	out := strings.TrimSpace(choice.Message.Content)
-	if len(out) > 16000 {
-		return "", errors.New("provider answer exceeded size limit")
-	}
-	return out, nil
 }
 
 // chatChoice is the first completion returned by the provider.
