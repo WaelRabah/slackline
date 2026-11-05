@@ -61,3 +61,16 @@ func playSound(ctx context.Context, path string) tea.Cmd {
 		return soundDoneMsg{fallback: err != nil && ctx.Err() == nil}
 	}
 }
+
+// toggleSound turns notification sounds on or off and saves the choice.
+func (m *Model) toggleSound() {
+	m.soundEnabled = !m.soundEnabled
+	if m.soundEnabled {
+		m.status = "Notification sounds on"
+	} else {
+		m.status = "Notification sounds off"
+	}
+	if err := m.SaveState(); err != nil {
+		m.setError(err)
+	}
+}

@@ -48,6 +48,11 @@ type imageMsg struct {
 // All state changes run in Bubble Tea's update loop; downloads and decoding run
 // in commands. Only visible previews are loaded, with one request in flight.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// ctrl+y toggles notification sounds from any screen.
+	if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "ctrl+y" {
+		m.toggleSound()
+		return m, nil
+	}
 	var cmd tea.Cmd
 	switch event := msg.(type) {
 	case imageMsg, historyMsg, parentHistoryMsg, threadsMsg, emojisMsg, reactionsMsg, bgResult, preferencesSaved:
