@@ -38,7 +38,7 @@ func TestLatestShowsWhereEachChimeCameFrom(t *testing.T) {
 	m.noteIncomingMessage("C1", slack.Message{TS: "1793833200.000100", User: "U2", Text: "deploy done"}, "Slack knock_brush.mp3")
 	m.noteSummaryReady("AI catch-up ready", time.Unix(1793833300, 0))
 	view := ansi.Strip(m.latestView())
-	for _, want := range []string{"Latest · 2", "deploy done", "from: Incoming message · sound: Slack knock_brush.mp3", "from: AI catch-up ready"} {
+	for _, want := range []string{"Latest · 2", "deploy done", "from: Incoming message", "from: AI catch-up ready"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("missing %q in:\n%s", want, view)
 		}

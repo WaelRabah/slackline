@@ -3,6 +3,8 @@ package tui
 import (
 	"fmt"
 	"strings"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 type sidebarGroup struct {
@@ -222,4 +224,41 @@ func (m *Model) moveConversation(delta int) {
 	if len(rows) > 0 {
 		m.selectSidebar(m.sidebarPosition(rows) + delta)
 	}
+}
+
+// sidebarShown returns the row indices drawn in the sidebar: pinned rows first,
+// then the rows around the cursor. View and mouse clicks use the same list.
+func (m Model) sidebarShown(rows []sidebarRow, cursor, count int) []int {
+	shown := []int{}
+	pinned := min(pinnedRows, len(rows), count)
+	if count <= pinnedRows {
+		pinned = 0
+	}
+	for i := 0; i < pinned; i++ {
+		shown = append(shown, i)
+	}
+	remaining := count - pinned
+	start := max(pinned, cursor-remaining+1)
+	for i := start; i < min(len(rows), start+remaining); i++ {
+		shown = append(shown, i)
+	}
+	return shown
+}
+
+// activateSidebar opens the selected sidebar row: a destination, a section toggle,
+// or a conversation. Enter and mouse clicks both use it.
+func (m *Model) activateSidebar() tea.Cmd {
+	row, ok := m.sidebarSelection()
+	if !ok {
+		return nil
+	}
+	if row.destination != "" {
+		return m.openDestination(row.destination)
+	}
+	if row.index < 0 {
+		m.toggleSection()
+		return nil
+	}
+	m.selected = row.index
+	return m.openSelected()
 }

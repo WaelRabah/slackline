@@ -134,7 +134,6 @@ func (m Model) latestView() string {
 	accent := lipgloss.NewStyle().Bold(true).Foreground(m.accent())
 	var b strings.Builder
 	b.WriteString(accent.Render(fmt.Sprintf("Latest · %d", len(m.recent))) + "\n")
-	b.WriteString(muted.Render("Newest first. Chimes are listed with the sound that played.") + "\n")
 	if len(m.recent) == 0 {
 		b.WriteString("\nNothing yet. New messages and finished summaries appear here.")
 		return ansi.Hardwrap(b.String(), width, true)
@@ -156,9 +155,6 @@ func (m Model) latestView() string {
 		}
 		b.WriteString(ansi.Truncate(body, width, "…") + "\n")
 		source := "    from: " + item.source
-		if item.sound != "" {
-			source += " · sound: " + item.sound
-		}
 		b.WriteString(muted.Render(ansi.Truncate(source, width, "…")) + "\n")
 	}
 	return b.String()
