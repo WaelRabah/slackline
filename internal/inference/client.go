@@ -70,13 +70,45 @@ func Summarize(ctx context.Context, settings Settings, transcript string) (strin
 // complete posts one non-streaming chat-completions request. The user message is
 // untrusted Slack content; callers must keep their instructions in system.
 func complete(ctx context.Context, settings Settings, system, user string, maxTokens int) (string, error) {
+	payload := map[string]any{"model": settings.ChatModel, "stream": false, "messages": []map[string]string{{"role": "system", "content": system}, {"role": "user", "content": user}}, "max_tokens": maxTokens}
+	choice, err := postChat(ctx, settings, payload)
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(choice.Message.Content) == "" {
+		return "", errors.New("provider returned no answer")
+	}
+	if choice.Finish == "length" {
+		return "", errors.New("provider truncated the answer; try a model with a larger output limit")
+	}
+	out := strings.TrimSpace(choice.Message.Content)
+	if len(out) > 16000 {
+		return "", errors.New("provider answer exceeded size limit")
+	}
+	return out, nil
+}
+
+// chatChoice is the first completion returned by the provider.
+type chatChoice struct {
+	Message struct {
+		Content   string     `json:"content"`
+		ToolCalls []toolCall `json:"tool_calls"`
+	} `json:"message"`
+	Finish string `json:"finish_reason"`
+}
+
+// postChat sends one chat-completions request with credential-safe errors. It
+// never follows redirects, so the bearer key cannot be sent to another host.
+func postChat(ctx context.Context, settings Settings, payload map[string]any) (chatChoice, error) {
 	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
-	payload := map[string]any{"model": settings.ChatModel, "stream": false, "messages": []map[string]string{{"role": "system", "content": system}, {"role": "user", "content": user}}, "max_tokens": maxTokens}
-	data, _ := json.Marshal(payload)
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return chatChoice{}, errors.New("cannot encode inference request")
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(settings.BaseURL, "/")+"/chat/completions", bytes.NewReader(data))
 	if err != nil {
-		return "", errors.New("cannot create inference request")
+		return chatChoice{}, errors.New("cannot create inference request")
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if settings.APIKey != "" {
@@ -85,33 +117,21 @@ func complete(ctx context.Context, settings Settings, system, user string, maxTo
 	client := &http.Client{Timeout: 90 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", errors.New("inference request failed; check the provider connection")
+		return chatChoice{}, errors.New("inference request failed; check the provider connection")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("inference provider returned HTTP %d; check Settings", resp.StatusCode)
+		return chatChoice{}, fmt.Errorf("inference provider returned HTTP %d; check Settings", resp.StatusCode)
 	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, (1<<20)+1))
-	if err != nil || len(body) > 1<<20 {
-		return "", errors.New("cannot read inference response or response too large")
+	body, err := io.ReadAll(io.LimitReader(resp.Body, (4<<20)+1))
+	if err != nil || len(body) > 4<<20 {
+		return chatChoice{}, errors.New("cannot read inference response or response too large")
 	}
 	var result struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-			Finish string `json:"finish_reason"`
-		} `json:"choices"`
+		Choices []chatChoice `json:"choices"`
 	}
-	if json.Unmarshal(body, &result) != nil || len(result.Choices) == 0 || strings.TrimSpace(result.Choices[0].Message.Content) == "" {
-		return "", errors.New("provider returned no answer")
+	if json.Unmarshal(body, &result) != nil || len(result.Choices) == 0 {
+		return chatChoice{}, errors.New("provider returned no answer")
 	}
-	if result.Choices[0].Finish == "length" {
-		return "", errors.New("provider truncated the answer; try a model with a larger output limit")
-	}
-	out := strings.TrimSpace(result.Choices[0].Message.Content)
-	if len(out) > 16000 {
-		return "", errors.New("provider answer exceeded size limit")
-	}
-	return out, nil
+	return result.Choices[0], nil
 }

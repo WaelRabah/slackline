@@ -115,6 +115,8 @@ func (m *Model) summaryHook(msg tea.Msg) tea.Cmd {
 		m.recordAnswer(event)
 	case unreadsMsg:
 		return m.applyUnreads(event)
+	case markedBlockMsg:
+		m.applyMarkedBlock(event)
 	}
 	return nil
 }

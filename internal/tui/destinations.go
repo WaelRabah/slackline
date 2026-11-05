@@ -37,6 +37,8 @@ func (m Model) destinationTitle() string {
 		return "AI SUMMARIES"
 	case threadsDestination:
 		return "THREADS"
+	case unreadsDestination:
+		return "UNREADS SUMMARIES"
 	}
 	return ""
 }
@@ -54,7 +56,7 @@ func (m *Model) openDestination(id string) tea.Cmd {
 		return nil
 	}
 	if id == unreadsDestination {
-		m.status = "Unreads · summarized by channel"
+		m.status = "Unreads Summaries · one block per channel"
 		m.renderDestination()
 		return m.autoUnreads()
 	}
@@ -77,7 +79,7 @@ func (m *Model) renderDestination() {
 	}
 	if m.destination == aiAssistant && m.provider.Ready() && !m.demo {
 		if len(m.assistant) == 0 && !m.assistantBusy {
-			m.viewport.SetContent("Ask about your Slack conversations.\n\nQuestions use messages from the last 14 days in your first 15 conversations. Answers cite Slack links; check them before acting.")
+			m.viewport.SetContent("Ask about your Slack conversations.\n\nThe assistant searches your channels, DMs, groups and threads with tools, 14 days by default and up to 90 days. Answers cite Slack links; check them before acting.")
 		} else {
 			m.viewport.SetContent(m.assistantView())
 		}
