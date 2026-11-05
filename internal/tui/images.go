@@ -309,12 +309,12 @@ func (m Model) renderImage(ref imageRef, columns, rows int) string {
 func (m Model) imageBlocks(message slack.Message, width int) string {
 	var out strings.Builder
 	for _, ref := range m.messageImages(message) {
-		rows := 10
+		rows := 20
 		if ref.emoji {
 			rows = 2
 		}
 		out.WriteString("\n\n" + ansi.Hardwrap("▧ "+ref.label, width, true) + "\n")
-		preview := m.renderImage(ref, min(width, 64), rows)
+		preview := m.renderImage(ref, min(width, 100), rows)
 		// Reserve rows while loading so downloads do not move the selected block.
 		out.WriteString(lipgloss.NewStyle().Height(rows).MaxHeight(rows).Render(preview))
 	}

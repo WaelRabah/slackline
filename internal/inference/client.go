@@ -78,6 +78,9 @@ func complete(ctx context.Context, settings Settings, system, user string, maxTo
 	if strings.TrimSpace(choice.Message.Content) == "" {
 		return "", errors.New("provider returned no answer")
 	}
+	if choice.Finish == "length" && strings.TrimSpace(choice.Message.Content) != "" {
+		return cutOff(strings.TrimSpace(choice.Message.Content)), nil
+	}
 	if choice.Finish == "length" {
 		return "", errors.New("provider truncated the answer; try a model with a larger output limit")
 	}
