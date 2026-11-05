@@ -22,6 +22,7 @@ type imageRef struct {
 }
 type imageEntry struct {
 	image         image.Image
+	raw           []byte
 	error         string
 	used          uint64
 	columns, rows int
@@ -41,6 +42,7 @@ type imageMsg struct {
 	url   string
 	image image.Image
 	err   error
+	raw   []byte
 }
 
 // All state changes run in Bubble Tea's update loop; downloads and decoding run
@@ -60,9 +62,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		entry := m.images[result.url]
 		if entry != nil {
 			entry.image = result.image
+			entry.raw = result.raw
 			if result.err != nil {
 				entry.error = cleanLine(result.err.Error())
 			}
+		}
+		if m.mode == imageMode {
+			cmd = m.inlineImageCmd()
 		}
 		bottom := m.viewport.AtBottom()
 		m.renderHistory()
@@ -76,12 +82,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "esc", "q", "v":
 			m.mode = normal
 			m.viewer = nil
+			cmd = func() tea.Msg { return tea.ClearScreen() }
 		case "o":
 			cmd = m.openImageExternally()
 		case "right", "l", "j", "down":
 			m.imageIndex = (m.imageIndex + 1) % len(m.viewer)
+			cmd = m.inlineImageCmd()
 		case "left", "h", "k", "up":
 			m.imageIndex = (m.imageIndex + len(m.viewer) - 1) % len(m.viewer)
+			cmd = m.inlineImageCmd()
 		}
 	} else if key, ok := msg.(tea.KeyPressMsg); ok && m.mode == normal && key.String() == "v" && (m.focus == messages || m.focus == parentPane) {
 		m.viewer = nil
@@ -110,6 +119,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(m.viewer) > 0 {
 			m.mode = imageMode
 			m.imageIndex = 0
+			cmd = m.inlineImageCmd()
 		} else {
 			m.status = "No images in this message"
 		}
@@ -289,7 +299,10 @@ func (m *Model) loadVisibleImages() tea.Cmd {
 			if err == nil {
 				decoded, err = media.Decode(data)
 			}
-			return imageMsg{ref.url, decoded, err}
+			if err != nil {
+				data = nil
+			}
+			return imageMsg{url: ref.url, image: decoded, err: err, raw: data}
 		}
 	}
 	return nil
@@ -328,6 +341,10 @@ func (m Model) imageView() string {
 	}
 	ref := m.viewer[m.imageIndex]
 	title := fmt.Sprintf("IMAGE %d/%d · Esc closes · ←/→ next · o opens in Preview", m.imageIndex+1, len(m.viewer))
-	body := ansi.Hardwrap(ref.label, max(1, m.width-6), true) + "\n\n" + m.renderImage(ref, max(1, m.width-6), max(1, m.mainHeight()-7))
+	picture := m.renderImage(ref, max(1, m.width-6), max(1, m.mainHeight()-7))
+	if inlineImagesSupported() {
+		picture = strings.Repeat("\n", max(0, m.mainHeight()-8))
+	}
+	body := ansi.Hardwrap(ref.label, max(1, m.width-6), true) + "\n\n" + picture
 	return m.paneFrame(title, body, m.width, m.mainHeight(), true)
 }
