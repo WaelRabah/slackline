@@ -8,6 +8,12 @@ import (
 	"time"
 )
 
+const (
+	contextHistoryPages = 10 // 200 messages per page
+	contextThreads      = 40 // thread roots whose replies are fetched per conversation
+	contextReplyPages   = 3
+)
+
 type ContextPage struct {
 	Messages []Message
 	Partial  bool
@@ -32,51 +38,76 @@ func (c *Client) OpenDM(ctx context.Context, user string) (Conversation, error) 
 	return result.Channel, err
 }
 
-// Search includes replies on roots older than the window. Every result is checked
-// against the exact channel and timestamps, even if Slack search filters differ.
+// tsParam formats a time as the Slack timestamp parameter used by history calls.
+func tsParam(t time.Time) string { return fmt.Sprintf("%d.000000", t.Unix()) }
+
+// ConversationContext reads a channel's messages in [since, until] with
+// conversations.history, then adds replies for thread roots in that window.
+// Every message is checked against the exact channel and timestamps. Caps are
+// reported through Partial rather than presented as complete coverage.
 func (c *Client) ConversationContext(ctx context.Context, channel string, since, until time.Time) (ContextPage, error) {
 	result := ContextPage{}
 	seen := map[string]bool{}
-	query := "in:" + channel + " after:" + since.AddDate(0, 0, -1).UTC().Format("2006-01-02")
-	for page := 1; page <= 10; page++ {
-		var response struct {
-			Messages struct {
-				Matches []struct {
-					Message
-					Channel struct {
-						ID string `json:"id"`
-					} `json:"channel"`
-				} `json:"matches"`
-				Paging     struct{ Pages, Total int } `json:"paging"`
-				Pagination struct {
-					Pages int `json:"page_count"`
-					Total int `json:"total_count"`
-				} `json:"pagination"`
-			} `json:"messages"`
+	add := func(message Message) {
+		at := TimestampTime(message.TS)
+		if at.Before(since) || at.After(until) || seen[message.TS] {
+			return
 		}
-		err := c.call(ctx, "search.messages", url.Values{"query": {query}, "sort": {"timestamp"}, "sort_dir": {"desc"}, "count": {"100"}, "page": {fmt.Sprint(page)}}, &response)
+		message.Channel = channel
+		seen[message.TS] = true
+		result.Messages = append(result.Messages, message)
+	}
+
+	var roots []string
+	cursor := ""
+	finished := false
+	for page := 0; page < contextHistoryPages; page++ {
+		var history History
+		err := c.call(ctx, "conversations.history", url.Values{"channel": {channel}, "oldest": {tsParam(since)}, "latest": {tsParam(until)}, "inclusive": {"true"}, "limit": {"200"}, "cursor": {cursor}}, &history)
 		if err != nil {
 			return ContextPage{}, err
 		}
-		for _, match := range response.Messages.Matches {
-			at := TimestampTime(match.TS)
-			if match.Channel.ID != channel || at.Before(since) || at.After(until) || seen[match.TS] {
-				continue
+		for _, message := range history.Messages {
+			add(message)
+			if message.ReplyCount > 0 && (message.ThreadTS == "" || message.ThreadTS == message.TS) {
+				roots = append(roots, message.TS)
 			}
-			message := match.Message
-			message.Channel = channel
-			result.Messages = append(result.Messages, message)
-			seen[match.TS] = true
 		}
-		pages := max(response.Messages.Paging.Pages, response.Messages.Pagination.Pages)
-		total := max(response.Messages.Paging.Total, response.Messages.Pagination.Total)
-		if pages == 0 && total > 0 {
-			pages = (total + 99) / 100
-		}
-		if (pages > 0 && page >= pages) || (pages == 0 && len(response.Messages.Matches) < 100) {
-			return result, nil
+		cursor = history.ResponseMetadata.NextCursor
+		if cursor == "" || !history.HasMore {
+			finished = true
+			break
 		}
 	}
-	result.Partial = true
+	if !finished {
+		result.Partial = true
+	}
+
+	if len(roots) > contextThreads {
+		roots = roots[:contextThreads]
+		result.Partial = true
+	}
+	for _, root := range roots {
+		replyCursor := ""
+		for page := 0; page < contextReplyPages; page++ {
+			var replies History
+			err := c.call(ctx, "conversations.replies", url.Values{"channel": {channel}, "ts": {root}, "limit": {"200"}, "cursor": {replyCursor}}, &replies)
+			if err != nil {
+				return ContextPage{}, err
+			}
+			for _, message := range replies.Messages {
+				if message.TS != root {
+					add(message)
+				}
+			}
+			replyCursor = replies.ResponseMetadata.NextCursor
+			if replyCursor == "" || !replies.HasMore {
+				break
+			}
+			if page == contextReplyPages-1 {
+				result.Partial = true
+			}
+		}
+	}
 	return result, nil
 }

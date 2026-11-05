@@ -1,12 +1,14 @@
 # AI destinations and deferred inference
 
-The application pins AI assistant and AI summaries above ordinary conversations. Both remain disabled local workspace views: assistant retrieval, daily digest generation, and scheduled reminders are still pending. Their composer cannot post to Slack.
+The application pins the AI assistant and AI summaries above ordinary conversations. The assistant answers questions from recent conversations, and conversation summaries run automatically. Daily digest generation and scheduled reminders are still pending. Neither AI view can post to Slack.
 
 ## Private conversation summaries (implemented)
 
 Settings (`,`) configures the OpenAI-compatible provider, masked key, chat model, and explicit `ai.enabled` switch (off by default). `s` inside a conversation retrieves accessible messages and replies from a rolling 14-day window and requests a catch-up: what's happening, decisions/blockers, and next steps. The transcript identifies authors, timestamps, thread roots where available, and source URLs. Model instructions distinguish evidence and suggestions, avoid invented owners/deadlines, and treat messages as untrusted data.
 
-Slack search includes recent replies on roots older than two weeks. Exact channel/time checks apply to every result. Collection caps at ten pages of 100 matches and a 100 KB transcript; capped context is labeled partial. Slack retention/search preferences can further limit coverage. Failures never present an incomplete fetch as complete. No read markers or Slack posts are made by summary collection/generation.
+Retrieval uses `conversations.history` over the 14-day window, then `conversations.replies` for thread roots in that window (up to 40 threads). Every message is checked against the exact channel and timestamps. Collection caps at 2,000 messages per conversation and a 100 KB transcript; capped context is labeled partial. Slack retention can further limit coverage. Failures never present an incomplete fetch as complete. No read markers or Slack posts are made by summary collection/generation.
+
+Summaries run automatically for the open conversation. A summary runs when the conversation opens and when a new message arrives in it. A stored summary is reused while no newer message exists, so opening the same conversation again costs nothing. Pressing `s` always regenerates. A failed run is not retried automatically, so a provider error cannot loop. Other conversations are summarized only when opened.
 
 The result is a fixed bottom card, with `S` for a scrollable full view. It persists only in the private workspace/user state (up to 128 conversation summaries); it is never a workspace-visible Slack pin. Its timestamp remains visible and regeneration is manual. HTTP provider requests have time/size bounds, refuse redirects, require HTTPS except local providers, and hide raw response/error bodies. Demo never invokes inference. Embeddings are not needed for this feature.
 
@@ -20,7 +22,9 @@ Capture uses `ffmpeg` (`brew install ffmpeg`) through macOS AVFoundation. The te
 
 ## AI assistant
 
-Once inference and retrieval are implemented, accept prompts about accessible Slack conversations from the rolling last 14 days. Include channels, DMs, group DMs, and thread replies, independently of sidebar recent/filter/folding choices. Fetch and index only data the authenticated user can access. Answers must link back to source conversations/messages and distinguish evidence from inference. Do not imply complete workspace coverage when collection is partial or retention limits apply.
+Open the AI assistant, press `i`, and ask a question. The assistant reads the last 14 days of the first 15 conversations in your list (channels, DMs and group DMs, plus thread replies), sends one bounded transcript to the chat-completions endpoint, and shows the answer in the pane. Answers cite Slack message links and are told to separate evidence from inference. Partial coverage is labeled on the answer. It reads only what your account can already access and posts nothing to Slack.
+
+Limits: the first 15 conversations only, not a full workspace search; 150 KB of transcript per question; questions up to 1,000 characters. Answers are not saved between sessions.
 
 ## AI summaries
 

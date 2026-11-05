@@ -124,8 +124,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = updated.(Model)
 		cmd = next
 	}
+	summaries := m.summaryHook(msg)
 	images := m.loadVisibleImages()
-	return m, tea.Batch(cmd, images)
+	return m, tea.Batch(cmd, summaries, images)
 }
 
 func (m Model) customEmojiURL(name string) string {
