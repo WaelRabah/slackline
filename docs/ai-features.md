@@ -10,6 +10,14 @@ Slack search includes recent replies on roots older than two weeks. Exact channe
 
 The result is a fixed bottom card, with `S` for a scrollable full view. It persists only in the private workspace/user state (up to 128 conversation summaries); it is never a workspace-visible Slack pin. Its timestamp remains visible and regeneration is manual. HTTP provider requests have time/size bounds, refuse redirects, require HTTPS except local providers, and hide raw response/error bodies. Demo never invokes inference. Embeddings are not needed for this feature.
 
+## Speech to text (implemented)
+
+In the composer (insert mode), `ctrl+t` records 10 seconds from the default microphone, transcribes it, and adds the text at the cursor of the current draft. Review it, then Enter to send. Nothing is sent without that confirmation.
+
+Set `ai.transcription_model` in `config.toml` to the model you assign for `/v1/audio/transcriptions`. The provider is the same `ai.base_url` and `ai.api_key` used by summaries, and `ai.enabled` must be true. An empty model disables the feature.
+
+Capture uses `ffmpeg` (`brew install ffmpeg`) through macOS AVFoundation. The terminal running Slackline needs microphone access in System Settings > Privacy & Security > Microphone. In Warp that is Warp itself. Clips are capped at 20 MB, requests use the same HTTPS-only, no-redirect policy as summaries, and error text never includes audio or responses.
+
 ## AI assistant
 
 Once inference and retrieval are implemented, accept prompts about accessible Slack conversations from the rolling last 14 days. Include channels, DMs, group DMs, and thread replies, independently of sidebar recent/filter/folding choices. Fetch and index only data the authenticated user can access. Answers must link back to source conversations/messages and distinguish evidence from inference. Do not imply complete workspace coverage when collection is partial or retention limits apply.

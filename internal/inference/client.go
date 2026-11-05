@@ -20,11 +20,13 @@ type Settings struct {
 	APIKey         string `toml:"api_key"`
 	ChatModel      string `toml:"chat_model"`
 	EmbeddingModel string `toml:"embedding_model"`
+	// TranscriptionModel is assigned in config.toml; speech-to-text stays off while empty.
+	TranscriptionModel string `toml:"transcription_model"`
 }
 
 func (s Settings) String() string   { return "inference settings [credentials redacted]" }
 func (s Settings) GoString() string { return s.String() }
-func (s Settings) Validate() error {
+func (s Settings) validateEndpoint() error {
 	u, err := url.Parse(s.BaseURL)
 	if err != nil || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return errors.New("provider base URL must be an absolute URL without credentials, query, or fragment")
@@ -32,15 +34,26 @@ func (s Settings) Validate() error {
 	if u.Scheme != "https" && !(u.Scheme == "http" && (u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1" || u.Hostname() == "::1")) {
 		return errors.New("provider requires HTTPS; HTTP is allowed only on localhost")
 	}
-	if strings.TrimSpace(s.ChatModel) == "" {
-		return errors.New("configure a chat model in Settings")
-	}
 	if strings.ContainsAny(s.APIKey, "\r\n") {
 		return errors.New("invalid provider API key")
 	}
 	return nil
 }
+func (s Settings) Validate() error {
+	if err := s.validateEndpoint(); err != nil {
+		return err
+	}
+	if strings.TrimSpace(s.ChatModel) == "" {
+		return errors.New("configure a chat model in Settings")
+	}
+	return nil
+}
 func (s Settings) Ready() bool { return s.Enabled && s.Validate() == nil }
+
+// TranscriptionReady reports whether speech-to-text can run with the current settings.
+func (s Settings) TranscriptionReady() bool {
+	return s.Enabled && strings.TrimSpace(s.TranscriptionModel) != "" && s.validateEndpoint() == nil
+}
 
 func Summarize(ctx context.Context, settings Settings, transcript string) (string, error) {
 	if !settings.Enabled {
