@@ -1505,7 +1505,9 @@ func (m Model) View() tea.View {
 			if row.index >= 0 && m.channelTyping(m.conversations[row.index].ID) {
 				badge = " [typing]" + badge
 			}
-			label = ansi.Truncate(label, max(1, sw-4-lipgloss.Width(badge)), "…") + badge
+			label = ansi.Truncate(label, max(1, sw-4-lipgloss.Width(badge)), "…")
+			// Unread counts sit at the right edge of the row.
+			label += strings.Repeat(" ", max(0, sw-4-lipgloss.Width(badge)-lipgloss.Width(label))) + badge
 			if row.destination != "" && (row.destination == m.destination || (row.destination == threadsDestination && m.thread != nil && m.thread.fromFeed)) {
 				label = "• " + strings.TrimPrefix(strings.TrimPrefix(label, "✦ "), "↳ ")
 			}
@@ -1515,6 +1517,9 @@ func (m Model) View() tea.View {
 				label = lipgloss.NewStyle().Width(sw - 4).Bold(true).Foreground(lipgloss.Color("#F4B860")).Background(lipgloss.Color("#211C14")).Render(label)
 			} else if row.index < 0 {
 				label = lipgloss.NewStyle().Bold(true).Foreground(muted).Render(label)
+			}
+			if row.destination == latestDestination && len(m.recent) > 0 && !(i == cursor && m.focus == sidebar) {
+				label = lipgloss.NewStyle().Bold(true).Foreground(latestYellow).Render(label)
 			}
 			lines = append(lines, label)
 		}

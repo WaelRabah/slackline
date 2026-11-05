@@ -139,6 +139,9 @@ func (m Model) latestView() string {
 	width := max(1, m.viewport.Width())
 	muted := lipgloss.NewStyle().Foreground(m.muted())
 	accent := lipgloss.NewStyle().Bold(true).Foreground(m.accent())
+	if len(m.recent) > 0 {
+		accent = accent.Foreground(latestYellow)
+	}
 	var b strings.Builder
 	b.WriteString(accent.Render(fmt.Sprintf("Latest · %d", len(m.recent))) + "\n")
 	if len(m.recent) == 0 {
@@ -182,9 +185,28 @@ func (m *Model) latestKey(key string) (tea.Cmd, bool) {
 		return nil, true
 	case "enter":
 		return m.openLatest(), true
+	case "x":
+		m.dismissLatest()
+		return nil, true
 	}
 	return nil, false
 }
+
+// dismissLatest removes the selected entry without opening it.
+func (m *Model) dismissLatest() {
+	if len(m.recent) == 0 {
+		return
+	}
+	index := min(m.latestIndex, len(m.recent)-1)
+	delete(m.recentSeen, m.recent[index].key)
+	m.recent = append(m.recent[:index], m.recent[index+1:]...)
+	m.latestIndex = min(m.latestIndex, max(0, len(m.recent)-1))
+	m.persistLatest()
+	m.renderDestination()
+}
+
+// latestYellow marks Latest while it has entries.
+var latestYellow = lipgloss.Color("#F4B860")
 
 // persistedRecent is the on-disk form of a Latest entry. It keeps the conversation
 // and message, so an entry opens after a restart.
