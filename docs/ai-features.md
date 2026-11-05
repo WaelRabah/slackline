@@ -37,7 +37,7 @@ Answers are rendered from Markdown in the pane: headings, bold, italics, code, l
 
 The AI Summaries view is your catch-up. It reads the unread messages across your conversations, the same set the Unreads Summaries view uses, and writes one Markdown summary with the headings "What you missed", "Top to-dos", "Updates and decisions" and "Messages waiting for your reply". Each bullet names its conversation and links to the source message. Top to-dos appear only when someone asked for an action, and no owners or deadlines are invented.
 
-It runs when the view opens and reruns only when unread messages change. `s` regenerates. It reads up to 20 conversations and 150 KB of transcript; anything cut off is labeled partial. Failures are shown in the view and retried the next time it opens. Without AI enabled, the view explains how to turn it on.
+Today's catch-up runs automatically at 11:00 local time, once per day. The app has to be open at 11:00; if it starts later the same day, the catch-up runs at startup. It runs when the view opens and reruns only when unread messages change. `s` regenerates. A chime plays when a summary is ready (sounds can be muted in Settings). It reads up to 20 conversations and 150 KB of transcript; anything cut off is labeled partial. Failures are shown in the view and retried the next time it opens. Without AI enabled, the view explains how to turn it on.
 
 Bot, alert and integration posts are read too, including their attachments and block text, so alert channels are not empty.
 

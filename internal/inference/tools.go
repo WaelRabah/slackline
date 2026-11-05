@@ -50,7 +50,7 @@ func Assist(ctx context.Context, settings Settings, system, question string, too
 	}
 	messages := []map[string]any{{"role": "system", "content": system}, {"role": "user", "content": question}}
 	for round := 0; round < maxToolRounds; round++ {
-		payload := map[string]any{"model": settings.ChatModel, "stream": false, "messages": messages, "tools": specs, "tool_choice": "auto", "max_tokens": 1500}
+		payload := map[string]any{"model": settings.ChatModel, "stream": false, "messages": messages, "tools": specs, "tool_choice": "auto", "max_tokens": 3000}
 		choice, err := postChat(ctx, settings, payload)
 		if err != nil {
 			return "", err
@@ -60,6 +60,9 @@ func Assist(ctx context.Context, settings Settings, system, question string, too
 			answer := strings.TrimSpace(choice.Message.Content)
 			if answer == "" {
 				return "", errors.New("provider returned no answer")
+			}
+			if choice.Finish == "length" && answer != "" {
+				return cutOff(answer), nil
 			}
 			if choice.Finish == "length" {
 				return "", errors.New("provider truncated the answer; try a model with a larger output limit")

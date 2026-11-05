@@ -120,6 +120,9 @@ func (m *Model) summaryHook(msg tea.Msg) tea.Cmd {
 		return m.applyUnreads(event)
 	case catchUpMsg:
 		m.applyCatchUp(event)
+		return m.summaryChime(event.err == nil && event.text != "")
+	case dailyTick:
+		return tea.Batch(m.dailyCatchUp(m.now()), dailyTickCmd())
 	case markedBlockMsg:
 		m.applyMarkedBlock(event)
 	}

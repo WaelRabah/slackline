@@ -102,6 +102,7 @@ type Model struct {
 	unreadIndex       int
 	markingUnread     map[string]bool
 	catchUp           catchUpState
+	lastDailyRun      string
 	summaryViewport   viewport.Model
 	directory         []slack.User
 	finderGeneration  int

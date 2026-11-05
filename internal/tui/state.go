@@ -27,6 +27,7 @@ type sidebarState struct {
 	Collapsed     map[string]bool                `json:"collapsed"`
 	RecentOnly    *bool                          `json:"recent_only,omitempty"`
 	SoundEnabled  *bool                          `json:"sound_enabled,omitempty"`
+	DailyCatchUp  string                         `json:"daily_catchup,omitempty"`
 }
 
 // State is scoped to both workspace and user; it contains no session credentials.
@@ -55,6 +56,7 @@ func (m *Model) loadState() {
 		m.summaries = state.Summaries
 	}
 	m.previousVisit = state.LastVisit
+	m.lastDailyRun = state.DailyCatchUp
 	if state.ReadPositions != nil {
 		m.readPositions = state.ReadPositions
 	}
@@ -77,7 +79,7 @@ func (m Model) SaveState() error {
 		return nil
 	}
 	m.pruneInteractions()
-	data, err := json.Marshal(sidebarState{Summaries: m.summaries, LastVisit: m.now(), ReadPositions: m.readPositions, Interactions: m.interactions, Collapsed: m.collapsed, RecentOnly: &m.recentOnly, SoundEnabled: &m.soundEnabled})
+	data, err := json.Marshal(sidebarState{Summaries: m.summaries, LastVisit: m.now(), ReadPositions: m.readPositions, Interactions: m.interactions, Collapsed: m.collapsed, RecentOnly: &m.recentOnly, SoundEnabled: &m.soundEnabled, DailyCatchUp: m.lastDailyRun})
 	if err != nil {
 		return errors.New("cannot encode sidebar state")
 	}
