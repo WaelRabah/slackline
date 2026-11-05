@@ -117,9 +117,16 @@ func (m *Model) summaryHook(msg tea.Msg) tea.Cmd {
 	case assistantMsg:
 		m.recordAnswer(event)
 	case unreadsMsg:
-		return m.applyUnreads(event)
+		m.applyUnreads(event)
+		if unreadsSucceeded(event) {
+			m.noteSummaryReady("Unreads Summaries ready", m.now())
+		}
+		return m.summaryChime(unreadsSucceeded(event))
 	case catchUpMsg:
 		m.applyCatchUp(event)
+		if event.err == nil && event.text != "" {
+			m.noteSummaryReady("AI catch-up ready", m.now())
+		}
 		return m.summaryChime(event.err == nil && event.text != "")
 	case dailyTick:
 		return tea.Batch(m.dailyCatchUp(m.now()), dailyTickCmd())

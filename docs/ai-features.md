@@ -54,3 +54,13 @@ The summaries run when the view opens and rerun only if the set of unread channe
 ## Activation work
 
 Extend the on-demand provider and collection pipeline into workspace retrieval, persist coverage watermarks, and implement daily scheduling before enabling the workspace destinations. Keep credentials private. Any AI draft intended for Slack must remain an explicit user-confirmed post; these local destinations never become real Slack channels.
+
+## Latest and notification sounds
+
+The sidebar's "Latest" entry lists recent messages across your conversations, newest first. Each entry shows where it came from: incoming messages and finished AI summaries. Entries that played a sound say which one, so you can tell where a chime came from. Enter opens a message's conversation at that message. The list keeps the last 200 entries and resets when the app restarts.
+
+Sounds: incoming messages and finished summaries play the notification sound set in the Slack app, read from the installed Slack app at runtime (`/Applications/Slack.app/Contents/Resources/knock_brush.mp3`). Nothing from Slack is copied into this repository. If Slack is not installed, macOS Glass plays instead.
+
+Message text: Slack date tokens show their readable date, and messages that keep their content in attachments or blocks (for example calendar and alert bots) are rendered from that content.
+
+Images: previews keep their proportions for the terminal's cell shape. The default assumes cells twice as tall as wide. If an image looks stretched, set `ui.cell_aspect` in `config.toml` to your terminal's cell height divided by its width (for example 2.2).

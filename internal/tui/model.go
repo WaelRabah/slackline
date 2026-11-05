@@ -103,6 +103,9 @@ type Model struct {
 	markingUnread     map[string]bool
 	catchUp           catchUpState
 	lastDailyRun      string
+	recent            []recentItem
+	recentSeen        map[string]bool
+	latestIndex       int
 	summaryViewport   viewport.Model
 	directory         []slack.User
 	finderGeneration  int
@@ -680,6 +683,11 @@ func (m *Model) canRequest() bool {
 
 func (m *Model) updateNormal(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	k := key.String()
+	if m.destination == latestDestination {
+		if cmd, handled := m.latestKey(k); handled {
+			return *m, cmd
+		}
+	}
 	if m.destination == unreadsDestination {
 		if cmd, handled := m.unreadsKey(k); handled {
 			return *m, cmd
@@ -1353,7 +1361,7 @@ func (m Model) messageBlock(message slack.Message, width int) string {
 			header += "\n" + timeStyle.Render(ansi.Truncate(timestamp, inner, "…"))
 		}
 	}
-	body := strings.ReplaceAll(m.messageText(message.Text), "\t", "    ")
+	body := strings.ReplaceAll(m.messageText(message.DisplayText()), "\t", "    ")
 	body = ansi.Hardwrap(body, inner, true)
 	body += m.imageBlocks(message, inner)
 	content := header + "\n\n" + body
@@ -1385,6 +1393,7 @@ func (m Model) messageBlock(message slack.Message, width int) string {
 var mention = regexp.MustCompile(`<@([A-Z0-9]+)>`)
 
 func (m Model) messageText(text string) string {
+	text = expandSlackDates(text)
 	text = mention.ReplaceAllStringFunc(text, func(value string) string {
 		id := value[2 : len(value)-1]
 		if name := m.users[id]; name != "" {

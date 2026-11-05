@@ -68,6 +68,23 @@ func boxScale(source image.Image, width, height int) *image.NRGBA {
 	return result
 }
 
+// CellAspect is the height-to-width ratio of one terminal cell. Half-block
+// rendering packs two image rows into each cell, so the ratio decides how many
+// rows the image needs to keep its proportions. Most terminals are about 2.0.
+var CellAspect = 2.0
+
+// fitCells scales an image into cols x rows cells while keeping its proportions
+// for cells with the given height-to-width ratio. It returns the size of the
+// sampling grid: width columns and height half-cell rows.
+func fitCells(srcW, srcH, cols, rows int, aspect float64) (int, int) {
+	if aspect <= 0 {
+		aspect = 2
+	}
+	maxHeight := float64(rows * 2)
+	scale := math.Min(float64(cols)/float64(srcW), maxHeight*aspect/(2*float64(srcH)))
+	return max(1, int(math.Round(float64(srcW)*scale))), max(1, int(math.Round(float64(srcH)*scale*2/aspect)))
+}
+
 func fit(width, height, maxWidth, maxHeight int) (int, int) {
 	scale := math.Min(float64(maxWidth)/float64(width), float64(maxHeight)/float64(height))
 	return max(1, int(math.Round(float64(width)*scale))), max(1, int(math.Round(float64(height)*scale)))
@@ -83,7 +100,7 @@ func Render(source image.Image, columns, rows int) string {
 	if bounds.Empty() {
 		return ""
 	}
-	width, height := fit(bounds.Dx(), bounds.Dy(), columns, rows*2)
+	width, height := fitCells(bounds.Dx(), bounds.Dy(), columns, rows, CellAspect)
 	grid := boxScale(source, width, height)
 	pixel := func(x, y int) color.RGBA {
 		c := grid.NRGBAAt(x, min(y, height-1))

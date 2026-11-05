@@ -2,8 +2,6 @@ package tui
 
 import (
 	"context"
-	"os/exec"
-	"runtime"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -54,16 +52,10 @@ func (m Model) summaryChime(ok bool) tea.Cmd {
 	return chime(m.ctx)
 }
 
+// chime plays the summary-ready sound. It uses the same Slack sound as messages.
 func chime(ctx context.Context) tea.Cmd {
-	if runtime.GOOS != "darwin" {
-		return tea.Raw("\a")
-	}
-	return func() tea.Msg {
-		soundCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-		defer cancel()
-		_ = exec.CommandContext(soundCtx, "/usr/bin/afplay", "/System/Library/Sounds/Ping.aiff").Run()
-		return nil
-	}
+	path, _ := chimeSource()
+	return playSound(ctx, path)
 }
 
 // unreadsSucceeded reports whether every channel in a run was summarized.

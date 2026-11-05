@@ -241,6 +241,13 @@ func (m *Model) updateLive(event slack.LiveEvent) tea.Cmd {
 	if !own && (message.User != "" || message.BotID != "" || message.Username != "") && slack.TimestampTime(message.TS).After(m.startedAt) && m.soundEnabled {
 		sound = m.notify()
 	}
+	if !own && message.TS != "" && message.Channel != "" && message.Subtype != "message_changed" && message.Subtype != "message_deleted" {
+		played := ""
+		if sound != nil {
+			played = m.soundLabel()
+		}
+		m.noteIncomingMessage(message.Channel, message, played)
+	}
 	m.status = "New message received"
 	if own {
 		m.status = "Message updated"
