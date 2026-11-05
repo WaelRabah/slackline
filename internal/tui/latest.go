@@ -119,11 +119,16 @@ func (m *Model) openLatest() tea.Cmd {
 	if len(m.recent) == 0 {
 		return nil
 	}
-	item := m.recent[min(m.latestIndex, len(m.recent)-1)]
+	index := min(m.latestIndex, len(m.recent)-1)
+	item := m.recent[index]
 	if item.kind != "message" {
 		m.status = "Summary entries open with the AI Summaries view"
 		return nil
 	}
+	// Opening a message takes it out of Latest: it has been seen.
+	delete(m.recentSeen, item.key)
+	m.recent = append(m.recent[:index], m.recent[index+1:]...)
+	m.latestIndex = min(m.latestIndex, max(0, len(m.recent)-1))
 	return m.openSearchHit(slack.SearchHit{Message: item.message, Conversation: item.conversation})
 }
 

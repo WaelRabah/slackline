@@ -7,8 +7,8 @@ import (
 	"github.com/WaelRabah/slackline/internal/slack"
 )
 
-// Opening an entry from Latest must not remove it from the list.
-func TestOpeningLatestEntryKeepsIt(t *testing.T) {
+// Opening an entry from Latest removes it: the message has been seen.
+func TestOpeningLatestEntryRemovesIt(t *testing.T) {
 	m := ready(t)
 	if len(m.conversations) == 0 {
 		t.Skip("demo has no conversations")
@@ -19,7 +19,7 @@ func TestOpeningLatestEntryKeepsIt(t *testing.T) {
 	m.destination = latestDestination
 	m.latestIndex = 0
 	m.latestKey("enter")
-	if len(m.recent) != 1 {
-		t.Fatalf("opening the entry removed it from Latest: %d entries", len(m.recent))
+	if len(m.recent) != 0 {
+		t.Fatalf("opened entry still in Latest: %d entries", len(m.recent))
 	}
 }
