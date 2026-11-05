@@ -57,6 +57,10 @@ func (m *Model) noteRecent(item recentItem) {
 
 // noteIncomingMessage records a live message that did not come from the user.
 func (m *Model) noteIncomingMessage(channel string, message slack.Message, sound string) {
+	// Muted conversations do not appear in Latest.
+	if m.mutedChannels[channel] {
+		return
+	}
 	conversation := m.conversationFor(channel)
 	text := cleanLine(m.messageText(message.DisplayText()))
 	sender := m.users[message.User]

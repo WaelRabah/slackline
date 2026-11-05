@@ -121,8 +121,10 @@ func (m *Model) summaryHook(msg tea.Msg) tea.Cmd {
 			m.noteSummaryReady("AI catch-up ready", m.now())
 		}
 		return m.summaryChime(event.err == nil && event.text != "")
+	case mutedMsg:
+		m.applyMuted(event)
 	case dailyTick:
-		return tea.Batch(m.dailyCatchUp(m.now()), m.backgroundRefresh(), dailyTickCmd())
+		return tea.Batch(m.dailyCatchUp(m.now()), m.backgroundRefresh(), m.refreshMuted(), dailyTickCmd())
 	case markedBlockMsg:
 		m.applyMarkedBlock(event)
 	}

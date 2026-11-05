@@ -107,6 +107,8 @@ type Model struct {
 	recentSeen        map[string]bool
 	latestIndex       int
 	latestUnseen      int
+	mutedChannels     map[string]bool
+	mutedRequested    time.Time
 	bgQueue           []bgJob
 	bgActive          map[string]bool
 	bgRunning         int
@@ -246,7 +248,7 @@ func New(ctx context.Context, api slack.API, session slack.Session, demo bool, o
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(m.bootstrap(), m.activityCmd(), m.recentCmd(), m.fetchEmojis(), func() tea.Msg { return threadsTick{} })
+	return tea.Batch(m.bootstrap(), m.activityCmd(), m.recentCmd(), m.fetchEmojis(), m.mutedCmd(), func() tea.Msg { return threadsTick{} }, dailyTickCmd())
 }
 func (m Model) bootstrap() tea.Cmd {
 	return func() tea.Msg {

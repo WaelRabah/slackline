@@ -27,7 +27,7 @@ func popupScript(title, body string) string {
 // popupCmd shows a macOS notification for an incoming message. It follows the
 // notification setting and skips the conversation that is already open.
 func (m Model) popupCmd(conversation slack.Conversation, message slack.Message) tea.Cmd {
-	if runtime.GOOS != "darwin" || m.demo || conversation.ID == m.active {
+	if runtime.GOOS != "darwin" || m.demo || conversation.ID == m.active || m.mutedChannels[conversation.ID] {
 		return nil
 	}
 	sender := m.users[message.User]
