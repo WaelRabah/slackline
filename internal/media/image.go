@@ -32,14 +32,40 @@ func Decode(data []byte) (image.Image, error) {
 		return nil, errors.New("image preview could not be decoded")
 	}
 	width, height := fit(cfg.Width, cfg.Height, 256, 256)
-	result := image.NewNRGBA(image.Rect(0, 0, width, height))
+	return boxScale(source, width, height), nil
+}
+
+// boxScale averages every source pixel that lands in each destination pixel.
+// Point sampling would skip most of a large image and turn detail into noise.
+// Colours are weighted by alpha so transparent pixels do not darken edges.
+func boxScale(source image.Image, width, height int) *image.NRGBA {
 	bounds := source.Bounds()
+	result := image.NewNRGBA(image.Rect(0, 0, width, height))
 	for y := range height {
+		y0 := bounds.Min.Y + y*bounds.Dy()/height
+		y1 := max(bounds.Min.Y+(y+1)*bounds.Dy()/height, y0+1)
 		for x := range width {
-			result.Set(x, y, source.At(bounds.Min.X+x*bounds.Dx()/width, bounds.Min.Y+y*bounds.Dy()/height))
+			x0 := bounds.Min.X + x*bounds.Dx()/width
+			x1 := max(bounds.Min.X+(x+1)*bounds.Dx()/width, x0+1)
+			var r, g, b, a, n uint64
+			for sy := y0; sy < y1; sy++ {
+				for sx := x0; sx < x1; sx++ {
+					c := color.NRGBAModel.Convert(source.At(sx, sy)).(color.NRGBA)
+					alpha := uint64(c.A)
+					r += uint64(c.R) * alpha
+					g += uint64(c.G) * alpha
+					b += uint64(c.B) * alpha
+					a += alpha
+					n++
+				}
+			}
+			if a == 0 {
+				continue
+			}
+			result.SetNRGBA(x, y, color.NRGBA{R: uint8(r / a), G: uint8(g / a), B: uint8(b / a), A: uint8(a / n)})
 		}
 	}
-	return result, nil
+	return result
 }
 
 func fit(width, height, maxWidth, maxHeight int) (int, int) {
@@ -58,8 +84,9 @@ func Render(source image.Image, columns, rows int) string {
 		return ""
 	}
 	width, height := fit(bounds.Dx(), bounds.Dy(), columns, rows*2)
+	grid := boxScale(source, width, height)
 	pixel := func(x, y int) color.RGBA {
-		c := color.NRGBAModel.Convert(source.At(bounds.Min.X+x*bounds.Dx()/width, bounds.Min.Y+min(y, height-1)*bounds.Dy()/height)).(color.NRGBA)
+		c := grid.NRGBAAt(x, min(y, height-1))
 		blend := func(value uint8) uint8 { return uint8((uint32(value)*uint32(c.A) + 16*uint32(255-c.A)) / 255) }
 		return color.RGBA{blend(c.R), blend(c.G), blend(c.B), 255}
 	}
