@@ -199,6 +199,7 @@ func (m *Model) applyBG(res bgResult) tea.Cmd {
 			m.status = "Private summary failed for " + res.job.label + ": " + cleanLine(res.err.Error())
 			break
 		}
+		res.summary.Digest = summaryDigest(res.summary)
 		m.summaries[res.job.channel] = res.summary
 		m.pruneSummaries()
 		if err := m.SaveState(); err != nil {
@@ -314,8 +315,10 @@ func (m *Model) runUnreads(sig string) tea.Cmd {
 	return m.pump()
 }
 
-// backgroundRefresh keeps summaries ready for unread conversations. It queues work
-// only where a block or summary is missing or older than the newest message.
+// backgroundRefresh keeps summaries current. It queues a block or summary only
+// where the newest message is newer than what the stored work covers. Stored
+// summaries are checked on every refresh, so a restart reruns the ones that have
+// new messages.
 func (m *Model) backgroundRefresh() tea.Cmd {
 	if m.demo || !m.provider.Ready() {
 		return nil
@@ -324,21 +327,28 @@ func (m *Model) backgroundRefresh() tea.Cmd {
 		m.latestSeen = map[string]string{}
 	}
 	sig := m.unreadSignature()
-	queued := 0
+	unread, queued := 0, 0
 	for _, target := range m.unreadItems() {
 		m.latestSeen[target.id] = laterTS(m.latestSeen[target.id], target.latest)
 		if !m.blockCurrent(target) && m.enqueue(m.unreadJob(target, sig)) {
-			queued++
+			unread++
 		}
 		if m.summaryStale(target.id) && m.enqueue(m.summaryJob(target.id)) {
 			queued++
 		}
 	}
-	if queued == 0 {
+	for channel := range m.summaries {
+		if m.summaryStale(channel) && m.enqueue(m.summaryJob(channel)) {
+			queued++
+		}
+	}
+	if unread > 0 {
+		m.unreadPending += unread
+		m.unreadBusy = true
+	}
+	if unread+queued == 0 {
 		return nil
 	}
-	m.unreadPending += queued
-	m.unreadBusy = true
 	return m.pump()
 }
 

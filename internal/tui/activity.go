@@ -71,6 +71,10 @@ func (m *Model) updateActivity(msg activityMsg) tea.Cmd {
 			continue
 		}
 		m.updateUnread(row)
+		if m.latestSeen == nil {
+			m.latestSeen = map[string]string{}
+		}
+		m.latestSeen[row.ID] = laterTS(m.latestSeen[row.ID], row.Latest)
 		if row.HasUnreads && !known[row.ID] && m.ready {
 			reload = true
 		}

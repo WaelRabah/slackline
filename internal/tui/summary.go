@@ -22,6 +22,8 @@ type conversationSummary struct {
 	// Newest is the newest message timestamp known when the summary started. A
 	// later message makes the summary stale; nothing else does.
 	Newest string `json:"newest"`
+	// Digest is a SHA-256 over the summary; it is checked when state is loaded.
+	Digest string `json:"digest,omitempty"`
 }
 
 // summarizeConversation handles the manual s key: it always regenerates.
@@ -101,6 +103,8 @@ func (m *Model) summaryHook(msg tea.Msg) tea.Cmd {
 		if message.Channel == m.active {
 			return m.autoSummary(message.Channel)
 		}
+	case activityMsg:
+		return m.backgroundRefresh()
 	case imageOpenedMsg:
 		if event.err != nil {
 			m.setError(event.err)

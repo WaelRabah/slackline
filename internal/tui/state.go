@@ -55,6 +55,10 @@ func (m *Model) loadState() {
 	}
 	if state.Summaries != nil {
 		m.summaries = state.Summaries
+		// Summaries that fail their digest were changed on disk; they are written again.
+		if verifySummaries(m.summaries) > 0 {
+			m.status = "Some saved summaries did not verify and will be rewritten"
+		}
 	}
 	m.previousVisit = state.LastVisit
 	m.lastDailyRun = state.DailyCatchUp
