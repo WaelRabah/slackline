@@ -27,6 +27,7 @@ type sidebarState struct {
 	Collapsed     map[string]bool                `json:"collapsed"`
 	RecentOnly    *bool                          `json:"recent_only,omitempty"`
 	SoundEnabled  *bool                          `json:"sound_enabled,omitempty"`
+	Recent        []persistedRecent              `json:"recent,omitempty"`
 	DailyCatchUp  string                         `json:"daily_catchup,omitempty"`
 }
 
@@ -57,6 +58,7 @@ func (m *Model) loadState() {
 	}
 	m.previousVisit = state.LastVisit
 	m.lastDailyRun = state.DailyCatchUp
+	m.restoreRecent(state.Recent)
 	if state.ReadPositions != nil {
 		m.readPositions = state.ReadPositions
 	}
@@ -79,7 +81,7 @@ func (m Model) SaveState() error {
 		return nil
 	}
 	m.pruneInteractions()
-	data, err := json.Marshal(sidebarState{Summaries: m.summaries, LastVisit: m.now(), ReadPositions: m.readPositions, Interactions: m.interactions, Collapsed: m.collapsed, RecentOnly: &m.recentOnly, SoundEnabled: &m.soundEnabled, DailyCatchUp: m.lastDailyRun})
+	data, err := json.Marshal(sidebarState{Summaries: m.summaries, LastVisit: m.now(), ReadPositions: m.readPositions, Interactions: m.interactions, Collapsed: m.collapsed, RecentOnly: &m.recentOnly, SoundEnabled: &m.soundEnabled, DailyCatchUp: m.lastDailyRun, Recent: persistRecent(m.recent)})
 	if err != nil {
 		return errors.New("cannot encode sidebar state")
 	}

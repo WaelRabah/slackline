@@ -46,6 +46,7 @@ func (m *Model) noteRecent(item recentItem) {
 		m.recent = m.recent[:len(m.recent)-1]
 	}
 	m.latestIndex = min(m.latestIndex, max(0, len(m.recent)-1))
+	m.persistLatest()
 }
 
 // noteIncomingMessage records a live message that did not come from the user.
@@ -129,6 +130,7 @@ func (m *Model) openLatest() tea.Cmd {
 	delete(m.recentSeen, item.key)
 	m.recent = append(m.recent[:index], m.recent[index+1:]...)
 	m.latestIndex = min(m.latestIndex, max(0, len(m.recent)-1))
+	m.persistLatest()
 	return m.openSearchHit(slack.SearchHit{Message: item.message, Conversation: item.conversation})
 }
 
@@ -182,4 +184,47 @@ func (m *Model) latestKey(key string) (tea.Cmd, bool) {
 		return m.openLatest(), true
 	}
 	return nil, false
+}
+
+// persistedRecent is the on-disk form of a Latest entry. It keeps the conversation
+// and message, so an entry opens after a restart.
+type persistedRecent struct {
+	At           time.Time          `json:"at"`
+	Kind         string             `json:"kind"`
+	Source       string             `json:"source"`
+	Sound        string             `json:"sound,omitempty"`
+	Key          string             `json:"key"`
+	Conversation slack.Conversation `json:"conversation"`
+	Message      slack.Message      `json:"message"`
+	Label        string             `json:"label"`
+	Text         string             `json:"text"`
+}
+
+func persistRecent(items []recentItem) []persistedRecent {
+	out := make([]persistedRecent, 0, len(items))
+	for _, item := range items {
+		out = append(out, persistedRecent{At: item.at, Kind: item.kind, Source: item.source, Sound: item.sound, Key: item.key, Conversation: item.conversation, Message: item.message, Label: item.label, Text: item.text})
+	}
+	return out
+}
+
+// restoreRecent rebuilds the Latest list from disk, newest first and bounded.
+func (m *Model) restoreRecent(saved []persistedRecent) {
+	m.recent = nil
+	m.recentSeen = map[string]bool{}
+	for _, entry := range saved {
+		if entry.Key == "" || m.recentSeen[entry.Key] || len(m.recent) >= maxLatest {
+			continue
+		}
+		m.recentSeen[entry.Key] = true
+		m.recent = append(m.recent, recentItem{at: entry.At, kind: entry.Kind, source: entry.Source, sound: entry.Sound, key: entry.Key, conversation: entry.Conversation, message: entry.Message, label: entry.Label, text: entry.Text})
+	}
+	sort.SliceStable(m.recent, func(i, j int) bool { return m.recent[i].at.After(m.recent[j].at) })
+}
+
+// persistLatest writes the Latest list to the sidebar state.
+func (m *Model) persistLatest() {
+	if err := m.SaveState(); err != nil {
+		m.setError(err)
+	}
 }
