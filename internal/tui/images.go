@@ -92,6 +92,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.imageIndex = (m.imageIndex + len(m.viewer) - 1) % len(m.viewer)
 			cmd = m.inlineImageCmd()
 		}
+	} else if _, ok := msg.(inlineDrawMsg); ok {
+		cmd = m.inlineImageRaw()
 	} else if key, ok := msg.(tea.KeyPressMsg); ok && m.mode == normal && key.String() == "v" && (m.focus == messages || m.focus == parentPane) {
 		m.viewer = nil
 		source := m.history
