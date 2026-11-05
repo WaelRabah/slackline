@@ -28,3 +28,18 @@ func TestInlineImagesOnlyForSupportingTerminals(t *testing.T) {
 		t.Fatal("tmux treated as supporting inline images")
 	}
 }
+
+// The picture is drawn only while the viewer is open with the image loaded.
+func TestInlineImageDrawsOnlyWhileViewerIsOpen(t *testing.T) {
+	t.Setenv("TERM_PROGRAM", "WarpTerminal")
+	m := Model{mode: normal}
+	if m.inlineImageRaw() != nil {
+		t.Fatal("drew a picture with the viewer closed")
+	}
+	m.mode = imageMode
+	m.viewer = []imageRef{{url: "u"}}
+	m.images = map[string]*imageEntry{"u": {raw: []byte("x")}}
+	if m.inlineImageRaw() == nil {
+		t.Fatal("did not draw the open viewer's picture")
+	}
+}

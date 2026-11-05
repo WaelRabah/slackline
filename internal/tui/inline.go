@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -29,11 +30,22 @@ const (
 	inlineImageCol = 3
 )
 
-// inlineImageCmd draws the current image at its position in the viewer. The
-// viewer reserves blank rows for the picture, so the picture is not redrawn over
-// text. The cursor is restored afterwards.
+// inlineDrawMsg asks for the picture to be drawn. It is sent after a short delay,
+// so the frame that reserves the picture's blank rows is already on screen.
+type inlineDrawMsg struct{}
+
+// inlineImageCmd schedules the picture to be drawn after the next frame.
 func (m Model) inlineImageCmd() tea.Cmd {
 	if !inlineImagesSupported() || len(m.viewer) == 0 {
+		return nil
+	}
+	return tea.Tick(40*time.Millisecond, func(time.Time) tea.Msg { return inlineDrawMsg{} })
+}
+
+// inlineImageRaw draws the current image at its position in the viewer. It does
+// nothing once the viewer is closed. The cursor is restored afterwards.
+func (m Model) inlineImageRaw() tea.Cmd {
+	if !inlineImagesSupported() || m.mode != imageMode || len(m.viewer) == 0 {
 		return nil
 	}
 	entry := m.images[m.viewer[m.imageIndex].url]
