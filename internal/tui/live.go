@@ -237,9 +237,10 @@ func (m *Model) updateLive(event slack.LiveEvent) tea.Cmd {
 		m.booting = true
 		bootstrap = m.bootstrap()
 	}
-	var sound tea.Cmd
+	var sound, popup tea.Cmd
 	if !own && (message.User != "" || message.BotID != "" || message.Username != "") && slack.TimestampTime(message.TS).After(m.startedAt) && m.soundEnabled {
 		sound = m.notify()
+		popup = m.popupCmd(m.conversationFor(message.Channel), message)
 	}
 	if !own && message.TS != "" && message.Channel != "" && message.Subtype != "message_changed" && message.Subtype != "message_deleted" {
 		played := ""
@@ -252,7 +253,7 @@ func (m *Model) updateLive(event slack.LiveEvent) tea.Cmd {
 	if own {
 		m.status = "Message updated"
 	}
-	return tea.Batch(read, sound, bootstrap, feedRefresh)
+	return tea.Batch(read, sound, popup, bootstrap, feedRefresh)
 }
 func typingKey(channel, thread string) string {
 	if thread != "" {
