@@ -22,9 +22,16 @@ Capture uses `ffmpeg` (`brew install ffmpeg`) through macOS AVFoundation. The te
 
 ## AI assistant
 
-Open the AI assistant, press `i`, and ask a question. The assistant reads the last 14 days of the first 15 conversations in your list (channels, DMs and group DMs, plus thread replies), sends one bounded transcript to the chat-completions endpoint, and shows the answer in the pane. Answers cite Slack message links and are told to separate evidence from inference. Partial coverage is labeled on the answer. It reads only what your account can already access and posts nothing to Slack.
+Open the AI assistant, press `i`, and ask a question. The assistant works through tools on the chat-completions endpoint (function calling):
 
-Limits: the first 15 conversations only, not a full workspace search; 150 KB of transcript per question; questions up to 1,000 characters. Answers are not saved between sessions.
+- `list_conversations` returns your channels, DMs, group DMs and followed threads, with IDs and unread counts.
+- `get_messages` reads messages from any conversation the model picks, or one thread (`thread_ts`), over a date range. The default is the last 14 days; the maximum is 90 days.
+
+The model calls these as needed, up to 8 rounds per question. Answers are Markdown with Slack message links and are told to separate evidence from inference. Partial coverage is labeled on the answer. Tool results are untrusted data, and the assistant cannot post to Slack.
+
+Limits: 60 KB per tool result, 300 KB of Slack content per question, and questions up to 1,000 characters. Answers are not saved between sessions. Providers without function calling will answer without reading Slack.
+
+Answers are rendered from Markdown in the pane: headings, bold, italics, code, lists, quotes, rules and clickable links.
 
 ## AI summaries
 
@@ -32,11 +39,13 @@ Generate a daily catch-up and a return-to-client catch-up covering unread/missed
 
 A local last-client-visit timestamp is persisted now. Slack's per-conversation read markers are also tracked. Neither provides an exact global last-login timestamp across all native Slack clients, and the future catch-up must explain its coverage accordingly. Scheduling, daily delivery time, summary persistence/deduplication, and any operation while the app is closed belong to the inference integration phase. No background daemon is installed now.
 
-## Unreads channel
+## Unreads Summaries
 
-The sidebar's "Unreads" entry lists every conversation with unread messages, most unread first. With AI enabled, each channel's unread messages are read in the unread range and sorted into "To reply", "To do", "Decisions and updates" and "FYI" with source links. Thread replies from the Threads feed are included when that feed has loaded. Each channel is summarized separately, so nothing is mixed across channels.
+The sidebar's "Unreads Summaries" entry shows one block per channel with unread messages, most unread first. With AI enabled, each block is sorted into "To reply", "To do", "Decisions and updates" and "FYI" with source links, rendered as Markdown. Thread replies from the Threads feed are included when that feed has loaded.
 
-It runs when the view opens and reruns only if the set of unread channels or their newest messages changed. `s` always regenerates. Up to 20 channels per run and 40 KB of transcript per channel; anything cut off is labeled partial. Unread messages are read only, never marked as read, and nothing is posted. Without AI, the view still shows counts.
+Keys: `n` or `j` moves to the next block, `p` or `k` to the previous one (both wrap). `x` marks the shown block read in Slack, including its threads. The block leaves the view only after Slack confirms; if the call fails, it stays and the error is shown. `s` regenerates the summaries.
+
+The summaries run when the view opens and rerun only if the set of unread channels or their newest messages changed. Up to 20 channels per run and 40 KB of transcript per channel; anything cut off is labeled partial. Without AI, the view still shows the counts.
 
 ## Activation work
 

@@ -99,6 +99,8 @@ type Model struct {
 	unreadBusy        bool
 	unreadSig         string
 	unreadStamp       time.Time
+	unreadIndex       int
+	markingUnread     map[string]bool
 	summaryViewport   viewport.Model
 	directory         []slack.User
 	finderGeneration  int
@@ -676,6 +678,11 @@ func (m *Model) canRequest() bool {
 
 func (m *Model) updateNormal(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	k := key.String()
+	if m.destination == unreadsDestination {
+		if cmd, handled := m.unreadsKey(k); handled {
+			return *m, cmd
+		}
+	}
 	if m.focus == parentPane && m.thread != nil {
 		switch k {
 		case "j", "down", "k", "up", "G", "g", "ctrl+d", "ctrl+u", "enter", "r":
@@ -1595,8 +1602,8 @@ func (m Model) View() tea.View {
 		composerBody = "Enable AI and set a chat model in Settings (,). Conversation summaries run automatically."
 	}
 	if m.destination == unreadsDestination {
-		composerLabel = "UNREADS"
-		composerBody = "Read-only · s refreshes the summary · open a channel from the sidebar to reply"
+		composerLabel = "UNREADS SUMMARIES"
+		composerBody = "n/p cycle blocks · x marks the block read · s refreshes the summaries"
 	}
 	if m.destination == threadsDestination {
 		composerLabel = "THREADS"
