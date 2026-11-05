@@ -76,6 +76,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "esc", "q", "v":
 			m.mode = normal
 			m.viewer = nil
+		case "o":
+			cmd = m.openImageExternally()
 		case "right", "l", "j", "down":
 			m.imageIndex = (m.imageIndex + 1) % len(m.viewer)
 		case "left", "h", "k", "up":
@@ -325,7 +327,7 @@ func (m Model) imageView() string {
 		return "No image selected"
 	}
 	ref := m.viewer[m.imageIndex]
-	title := fmt.Sprintf("IMAGE %d/%d · Esc closes · ←/→ next", m.imageIndex+1, len(m.viewer))
+	title := fmt.Sprintf("IMAGE %d/%d · Esc closes · ←/→ next · o opens in Preview", m.imageIndex+1, len(m.viewer))
 	body := ansi.Hardwrap(ref.label, max(1, m.width-6), true) + "\n\n" + m.renderImage(ref, max(1, m.width-6), max(1, m.mainHeight()-7))
 	return m.paneFrame(title, body, m.width, m.mainHeight(), true)
 }

@@ -101,6 +101,12 @@ func (m *Model) summaryHook(msg tea.Msg) tea.Cmd {
 		if message.Channel == m.active {
 			return m.autoSummary(message.Channel)
 		}
+	case imageOpenedMsg:
+		if event.err != nil {
+			m.setError(event.err)
+		} else {
+			m.status = "Image opened in the system viewer"
+		}
 	case assistantMsg:
 		m.recordAnswer(event)
 	case bgResult:
