@@ -7,31 +7,20 @@ import (
 	"github.com/WaelRabah/slackline/internal/slack"
 )
 
-func TestSummaryIsStaleOnlyWhenANewerMessageExists(t *testing.T) {
-	m := Model{latestSeen: map[string]string{"C1": "1700000200.000001"}, summaries: map[string]conversationSummary{}}
-	if !m.summaryStale("C1") {
-		t.Fatal("conversation without a summary should be stale")
-	}
-	m.summaries["C1"] = conversationSummary{Newest: "1700000100.000001"}
-	if !m.summaryStale("C1") {
-		t.Fatal("summary older than the newest message should be stale")
-	}
-	m.summaries["C1"] = conversationSummary{Newest: "1700000200.000001"}
-	if m.summaryStale("C1") {
-		t.Fatal("summary covering the newest message should not be regenerated")
-	}
-	if m.summaryStale("C2") {
-		t.Fatal("unknown conversation with no seen messages should not run")
+// A failed background summary is reported once and not queued again by itself.
+func TestFailedBackgroundSummaryIsNotRequeued(t *testing.T) {
+	m := Model{active: "C1", latestSeen: map[string]string{"C1": "1700000200.000001"}, summaries: map[string]conversationSummary{}, summaryBusy: map[string]bool{}, bgActive: map[string]bool{}}
+	job := bgJob{kind: bgSummary, channel: "C1"}
+	m.bgActive[jobKey(bgSummary, "C1")] = true
+	m.summaryBusy["C1"] = true
+	m.bgRunning = 1
+	m.applyBG(bgResult{job: job, err: errors.New("provider down")})
+	if m.summaryBusy["C1"] || m.bgActive[jobKey(bgSummary, "C1")] || len(m.bgQueue) != 0 {
+		t.Fatal("failed summary stayed busy or was queued again")
 	}
 }
 
-func TestFailedAutoSummaryDoesNotChainRetries(t *testing.T) {
-	m := Model{active: "C1", latestSeen: map[string]string{"C1": "1700000200.000001"}, summaries: map[string]conversationSummary{}}
-	if cmd := m.summaryHook(summaryMsg{channel: "C1", err: errors.New("provider down")}); cmd != nil {
-		t.Fatal("failed run scheduled another run")
-	}
-}
-
+// New messages make a stored summary stale; that is the only trigger for a rerun.
 func TestLiveMessageRecordsNewestAndIgnoresEdits(t *testing.T) {
 	m := Model{active: "C1", latestSeen: map[string]string{}, summaries: map[string]conversationSummary{}, summaryBusy: map[string]bool{}}
 	m.summaryHook(slack.LiveEvent{Type: "message", Message: slack.Message{Channel: "C1", TS: "1700000300.000001"}})

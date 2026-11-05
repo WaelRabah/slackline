@@ -9,7 +9,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/WaelRabah/slackline/internal/inference"
 	"github.com/WaelRabah/slackline/internal/slack"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -27,12 +26,6 @@ type unreadSection struct {
 	text, err      string
 	partial        bool
 	after, latest  string
-}
-
-type unreadsMsg struct {
-	signature string
-	sections  []unreadSection
-	generated time.Time
 }
 
 // markedBlockMsg reports a finished mark-as-read for one channel block.
@@ -145,60 +138,6 @@ func (m *Model) refreshUnreads() tea.Cmd {
 	return m.runUnreads(m.unreadSignature())
 }
 
-func (m *Model) runUnreads(sig string) tea.Cmd {
-	api, ok := m.api.(slack.UnreadsAPI)
-	if !ok {
-		m.status = "Unread messages are unavailable for this backend"
-		return nil
-	}
-	items := m.unreadItems()
-	if len(items) == 0 {
-		return nil
-	}
-	if len(items) > unreadsChannels {
-		items = items[:unreadsChannels]
-	}
-	ctx, provider, team, self := m.ctx, m.provider, m.session.TeamID, m.session.UserID
-	names := map[string]string{}
-	for id, name := range m.users {
-		names[id] = name
-	}
-	m.unreadBusy = true
-	m.status = fmt.Sprintf("Summarizing unreads in %d channels…", len(items))
-	m.renderDestination()
-	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(ctx, 8*time.Minute)
-		defer cancel()
-		var sections []unreadSection
-		for _, target := range items {
-			section := unreadSection{channel: target.id, label: target.label, after: target.after, latest: target.latest}
-			page, err := api.UnreadMessages(ctx, target.id, target.after, target.latest, self)
-			if err != nil {
-				section.err = cleanLine(err.Error())
-				sections = append(sections, section)
-				continue
-			}
-			messages := mergeUnreadMessages(page.Messages, target.threadReplies)
-			section.count = len(messages)
-			section.partial = page.Partial
-			if len(messages) == 0 {
-				sections = append(sections, section)
-				continue
-			}
-			transcript, trimmed := buildUnreadTranscript(team, names, target.id, messages)
-			section.partial = section.partial || trimmed
-			text, err := inference.Categorize(ctx, provider, target.label, transcript, section.partial)
-			if err != nil {
-				section.err = cleanLine(err.Error())
-			} else {
-				section.text = clean(text)
-			}
-			sections = append(sections, section)
-		}
-		return unreadsMsg{signature: sig, sections: sections, generated: time.Now()}
-	}
-}
-
 // mergeUnreadMessages joins channel-level and thread unreads, oldest first, without duplicates.
 func mergeUnreadMessages(channel, threads []slack.Message) []slack.Message {
 	seen := map[string]bool{}
@@ -246,30 +185,6 @@ func buildUnreadTranscript(team string, names map[string]string, channel string,
 		out.WriteString(line)
 	}
 	return out.String(), false
-}
-
-// applyUnreads stores a finished run. Blocks already shown keep their place and
-// are updated in place; blocks are removed only by mark-as-read.
-func (m *Model) applyUnreads(msg unreadsMsg) tea.Cmd {
-	m.unreadBusy = false
-	m.unreadSections = mergeSections(m.unreadSections, msg.sections)
-	m.unreadSig = msg.signature
-	m.unreadStamp = msg.generated
-	failed := 0
-	for _, section := range msg.sections {
-		if section.err != "" {
-			failed++
-		}
-	}
-	if failed > 0 {
-		m.status = fmt.Sprintf("Unreads summarized with %d failed channel(s)", failed)
-	} else {
-		m.status = "Unreads summarized by channel"
-	}
-	if m.destination == unreadsDestination {
-		m.renderDestination()
-	}
-	return nil
 }
 
 // mergeSections updates blocks that exist and appends new ones, keeping order.

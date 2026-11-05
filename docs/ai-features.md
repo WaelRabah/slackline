@@ -64,3 +64,11 @@ Sounds: incoming messages and finished summaries play the notification sound set
 Message text: Slack date tokens show their readable date, and messages that keep their content in attachments or blocks (for example calendar and alert bots) are rendered from that content.
 
 Images: previews keep their proportions for the terminal's cell shape. The default assumes cells twice as tall as wide. If an image looks stretched, set `ui.cell_aspect` in `config.toml` to your terminal's cell height divided by its width (for example 2.2).
+
+## Background processing
+
+Private summaries and unread blocks run as background jobs, three at a time. Each job reports back exactly once, even if it fails or times out, so a summary can't stay on "Gathering" indefinitely. Jobs are queued when a conversation with unread messages changes or a new message arrives, and at each minute tick. A conversation's private summary is therefore ready when you open it. Summaries only rerun when a newer message exists.
+
+## Mouse
+
+Clicking a sidebar entry opens it: a conversation, a destination, or a section header to collapse it. Mouse reporting is turned on in the terminal while Slackline runs.

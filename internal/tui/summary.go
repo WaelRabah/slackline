@@ -1,16 +1,13 @@
 package tui
 
 import (
-	"context"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/WaelRabah/slackline/internal/inference"
 	"github.com/WaelRabah/slackline/internal/slack"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -25,11 +22,6 @@ type conversationSummary struct {
 	// Newest is the newest message timestamp known when the summary started. A
 	// later message makes the summary stale; nothing else does.
 	Newest string `json:"newest"`
-}
-type summaryMsg struct {
-	channel string
-	summary conversationSummary
-	err     error
 }
 
 // summarizeConversation handles the manual s key: it always regenerates.
@@ -55,7 +47,7 @@ func (m *Model) summarizeConversation() tea.Cmd {
 	if !m.canRequest() {
 		return nil
 	}
-	return m.startSummary(m.active)
+	return m.queueSummary(m.active)
 }
 
 // autoSummary runs for the open conversation when it has no summary yet or a
@@ -64,7 +56,7 @@ func (m *Model) autoSummary(channel string) tea.Cmd {
 	if channel == "" || m.demo || !m.provider.Ready() || m.summaryBusy[channel] || !m.summaryStale(channel) {
 		return nil
 	}
-	return m.startSummary(channel)
+	return m.queueSummary(channel)
 }
 
 // summaryStale reports whether the known newest message is missing from the stored summary.
@@ -109,19 +101,10 @@ func (m *Model) summaryHook(msg tea.Msg) tea.Cmd {
 		if message.Channel == m.active {
 			return m.autoSummary(message.Channel)
 		}
-	case summaryMsg:
-		// A failed run is not retried here, so a persistent provider error cannot loop.
-		if event.err == nil && event.channel == m.active {
-			return m.autoSummary(event.channel)
-		}
 	case assistantMsg:
 		m.recordAnswer(event)
-	case unreadsMsg:
-		m.applyUnreads(event)
-		if unreadsSucceeded(event) {
-			m.noteSummaryReady("Unreads Summaries ready", m.now())
-		}
-		return m.summaryChime(unreadsSucceeded(event))
+	case bgResult:
+		return m.applyBG(event)
 	case catchUpMsg:
 		m.applyCatchUp(event)
 		if event.err == nil && event.text != "" {
@@ -129,79 +112,11 @@ func (m *Model) summaryHook(msg tea.Msg) tea.Cmd {
 		}
 		return m.summaryChime(event.err == nil && event.text != "")
 	case dailyTick:
-		return tea.Batch(m.dailyCatchUp(m.now()), dailyTickCmd())
+		return tea.Batch(m.dailyCatchUp(m.now()), m.backgroundRefresh(), dailyTickCmd())
 	case markedBlockMsg:
 		m.applyMarkedBlock(event)
 	}
 	return nil
-}
-
-// startSummary requests a summary of the last 14 days for channel. The result
-// covers every message known when it started.
-func (m *Model) startSummary(channel string) tea.Cmd {
-	api, ok := m.api.(slack.ContextAPI)
-	if !ok {
-		m.status = "Conversation context is unavailable for this backend"
-		return nil
-	}
-	label, team, provider, ctx := m.activeLabel(), m.session.TeamID, m.provider, m.ctx
-	until := m.now()
-	since := until.Add(-summaryWindow)
-	covered := m.latestSeen[channel]
-	names := map[string]string{}
-	for id, name := range m.users {
-		names[id] = name
-	}
-	m.summaryBusy[channel] = true
-	m.status = "Summarizing the last 14 days…"
-	m.resize()
-	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-		defer cancel()
-		page, err := api.ConversationContext(ctx, channel, since, until)
-		if err != nil {
-			return summaryMsg{channel: channel, err: err}
-		}
-		sort.Slice(page.Messages, func(i, j int) bool {
-			return slack.TimestampTime(page.Messages[i].TS).After(slack.TimestampTime(page.Messages[j].TS))
-		})
-		lines := []string{}
-		size, count := 0, 0
-		partial := page.Partial
-		for _, message := range page.Messages {
-			name := names[message.User]
-			if name == "" {
-				name = message.User
-			}
-			if name == "" {
-				name = message.Username
-			}
-			line := fmt.Sprintf("[%s] %s (thread %s) %s\n%s\n", slack.TimestampTime(message.TS).UTC().Format(time.RFC3339), cleanLine(name), message.ThreadTS, messageSourceURL(team, channel, message.TS), clean(message.Text))
-			if size+len(line) > 100000 {
-				partial = true
-				continue
-			}
-			lines = append(lines, line)
-			size += len(line)
-			count++
-		}
-		summary := conversationSummary{Generated: until, Since: since, Messages: count, Partial: partial, Newest: covered}
-		if count == 0 {
-			summary.Text = "No messages found in this conversation in the last 14 days. Slack retention may limit coverage."
-			return summaryMsg{channel: channel, summary: summary}
-		}
-		// Restore chronological order after selecting the newest bounded context.
-		for i, j := 0, len(lines)-1; i < j; i, j = i+1, j-1 {
-			lines[i], lines[j] = lines[j], lines[i]
-		}
-		transcript := fmt.Sprintf("Conversation: %s\nWindow: %s through %s\nMessages: %d. Partial coverage: %t. Slack retention may limit results.\n\n", cleanLine(label), since.UTC().Format(time.RFC3339), until.UTC().Format(time.RFC3339), count, partial) + strings.Join(lines, "\n")
-		text, err := inference.Summarize(ctx, provider, transcript)
-		summary.Text = clean(text)
-		if err != nil {
-			return summaryMsg{channel: channel, err: err}
-		}
-		return summaryMsg{channel: channel, summary: summary}
-	}
 }
 
 // messageSourceURL builds the Slack link for one message in a conversation.
