@@ -260,7 +260,7 @@ func (m *Model) expandSummary() {
 
 // conversationBody reserves a fixed bottom card while history scrolls independently.
 func (m Model) conversationBody(width int) string {
-	body := m.viewport.View()
+	body := lipgloss.NewStyle().Height(m.viewport.Height()).Render(m.viewport.View())
 	if height := m.summaryHeight(); height > 0 {
 		body = lipgloss.JoinVertical(lipgloss.Left, body, m.summaryCard(width, height))
 	}
