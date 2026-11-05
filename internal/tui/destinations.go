@@ -55,6 +55,11 @@ func (m *Model) openDestination(id string) tea.Cmd {
 		}
 		return nil
 	}
+	if id == aiSummaries && m.provider.Ready() && !m.demo {
+		m.status = "Your catch-up · s refreshes"
+		m.renderDestination()
+		return m.autoCatchUp()
+	}
 	if id == unreadsDestination {
 		m.status = "Unreads Summaries · one block per channel"
 		m.renderDestination()
@@ -65,6 +70,11 @@ func (m *Model) openDestination(id string) tea.Cmd {
 	return nil
 }
 func (m *Model) renderDestination() {
+	if m.destination == aiSummaries && m.provider.Ready() && !m.demo {
+		m.viewport.SetContent(m.catchUpView())
+		m.viewport.GotoTop()
+		return
+	}
 	if m.destination == unreadsDestination {
 		m.viewport.SetContent(m.unreadsView())
 		m.viewport.GotoTop()
@@ -90,7 +100,7 @@ func (m *Model) renderDestination() {
 	detail := "Ask questions and send prompts about conversations from the last 14 days."
 	if m.destination == aiSummaries {
 		title = "Your daily catch-up"
-		detail = "What you missed since your last visit\n\nTop to-dos\nUpdates and decisions\nMessages waiting for your reply\n\nDaily reminders and summaries will appear here when daily digest scheduling is implemented."
+		detail = "What you missed since your last visit\n\nTop to-dos\nUpdates and decisions\nMessages waiting for your reply\n\nEnable AI in Settings (,) to write the catch-up from your unread messages."
 		if !m.previousVisit.IsZero() {
 			detail += "\n\nLast visit to this client: " + m.previousVisit.Local().Format("Jan 02, 2006 15:04")
 		}

@@ -7,6 +7,17 @@ import (
 
 const unreadPages = 5 // 200 messages per page; larger backlogs are reported as partial
 
+// systemSubtypes are channel events, not content. Bot, integration and file
+// posts are kept: alerts and shared files are often the content people need.
+var systemSubtypes = map[string]bool{
+	"channel_join": true, "channel_leave": true, "channel_topic": true, "channel_purpose": true,
+	"channel_name": true, "channel_archive": true, "channel_unarchive": true,
+	"group_join": true, "group_leave": true, "group_topic": true, "group_purpose": true,
+	"group_name": true, "group_archive": true, "group_unarchive": true,
+	"pinned_item": true, "unpinned_item": true, "message_changed": true, "message_deleted": true,
+	"message_replied": true, "tombstone": true, "ekm_access_denied": true,
+}
+
 // UnreadPage holds one channel's unread channel-level messages.
 type UnreadPage struct {
 	Messages []Message
@@ -37,7 +48,7 @@ func (c *Client) UnreadMessages(ctx context.Context, channel, after, through, se
 			if !at.After(afterAt) || at.After(throughAt) || message.User == self || seen[message.TS] {
 				continue
 			}
-			if message.Subtype != "" && message.Subtype != "thread_broadcast" {
+			if systemSubtypes[message.Subtype] {
 				continue
 			}
 			seen[message.TS] = true

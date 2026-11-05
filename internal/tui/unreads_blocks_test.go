@@ -51,7 +51,7 @@ func TestUnreadsViewShowsOneBlockWithRenamedTitle(t *testing.T) {
 	m := blockModel()
 	m.viewport.SetWidth(80)
 	view := ansiStrip(m.unreadsView())
-	if !strings.Contains(view, "Unreads Summaries · 3 channels") || !strings.Contains(view, "Block 1 of 3") {
+	if !strings.Contains(view, "Unreads Summaries · 3 channels") || !strings.Contains(view, "block 1 of 3") {
 		t.Fatalf("unexpected header: %q", view)
 	}
 	if strings.Contains(view, "deploy done") {

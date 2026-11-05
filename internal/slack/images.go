@@ -2,6 +2,7 @@ package slack
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -32,16 +33,19 @@ func (f File) PreviewURL() string {
 
 type Attachment struct {
 	Title    string `json:"title"`
+	Pretext  string `json:"pretext"`
+	Text     string `json:"text"`
 	Fallback string `json:"fallback"`
 	ImageURL string `json:"image_url"`
 	ThumbURL string `json:"thumb_url"`
 }
 type ImageBlock struct {
-	Type      string       `json:"type"`
-	ImageURL  string       `json:"image_url"`
-	AltText   string       `json:"alt_text"`
-	Accessory *ImageBlock  `json:"accessory"`
-	Elements  []ImageBlock `json:"elements"`
+	Type      string          `json:"type"`
+	ImageURL  string          `json:"image_url"`
+	AltText   string          `json:"alt_text"`
+	Text      json.RawMessage `json:"text"`
+	Accessory *ImageBlock     `json:"accessory"`
+	Elements  []ImageBlock    `json:"elements"`
 }
 
 type ImageAPI interface {

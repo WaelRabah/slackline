@@ -11,6 +11,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/WaelRabah/slackline/internal/inference"
 	"github.com/WaelRabah/slackline/internal/slack"
+	"github.com/charmbracelet/x/ansi"
 )
 
 const (
@@ -18,12 +19,14 @@ const (
 	unreadBudget    = 40000 // bytes of transcript per channel
 )
 
-// unreadSection is one channel's categorized unreads.
+// unreadSection is one channel block. Blocks stay until they are marked read;
+// background changes to unread state never remove them.
 type unreadSection struct {
 	channel, label string
 	count          int
 	text, err      string
 	partial        bool
+	after, latest  string
 }
 
 type unreadsMsg struct {
@@ -39,14 +42,14 @@ type markedBlockMsg struct {
 	err             error
 }
 
-// unreadTarget is one channel with unread messages, ordered for display.
+// unreadTarget is one channel with unread messages, ready to summarize or mark read.
 type unreadTarget struct {
 	id, label, after, latest string
 	count                    int
 	threadReplies            []slack.Message
 }
 
-// unreadTargets lists channels with unread messages, most unread first.
+// unreadTargets lists channels that currently have unread state, most unread first.
 func (m Model) unreadTargets() []unreadTarget {
 	names := map[string]string{}
 	for id, name := range m.users {
@@ -74,6 +77,35 @@ func (m Model) unreadTargets() []unreadTarget {
 	return targets
 }
 
+// unreadItems is what the view shows: pinned blocks in their stored order, then
+// channels that became unread since the last run.
+func (m Model) unreadItems() []unreadTarget {
+	live := map[string]unreadTarget{}
+	for _, target := range m.unreadTargets() {
+		live[target.id] = target
+	}
+	var items []unreadTarget
+	seen := map[string]bool{}
+	for _, section := range m.unreadSections {
+		if seen[section.channel] {
+			continue
+		}
+		seen[section.channel] = true
+		item := unreadTarget{id: section.channel, label: section.label, after: section.after, latest: section.latest, count: max(1, section.count)}
+		if fresh, ok := live[section.channel]; ok {
+			item = fresh
+			item.latest = laterTS(fresh.latest, section.latest)
+		}
+		items = append(items, item)
+	}
+	for _, target := range m.unreadTargets() {
+		if !seen[target.id] {
+			items = append(items, target)
+		}
+	}
+	return items
+}
+
 // unreadSignature changes whenever the set of unread channels or their newest messages changes.
 func (m Model) unreadSignature() string {
 	parts := make([]string, 0, len(m.unread))
@@ -90,12 +122,7 @@ func (m *Model) autoUnreads() tea.Cmd {
 		return nil
 	}
 	sig := m.unreadSignature()
-	if sig == "" {
-		m.unreadSections = nil
-		m.unreadSig = ""
-		return nil
-	}
-	if sig == m.unreadSig {
+	if sig == "" || sig == m.unreadSig {
 		return nil
 	}
 	return m.runUnreads(sig)
@@ -124,14 +151,12 @@ func (m *Model) runUnreads(sig string) tea.Cmd {
 		m.status = "Unread messages are unavailable for this backend"
 		return nil
 	}
-	targets := m.unreadTargets()
-	if len(targets) == 0 {
-		m.unreadSections = nil
-		m.unreadSig = ""
+	items := m.unreadItems()
+	if len(items) == 0 {
 		return nil
 	}
-	if len(targets) > unreadsChannels {
-		targets = targets[:unreadsChannels]
+	if len(items) > unreadsChannels {
+		items = items[:unreadsChannels]
 	}
 	ctx, provider, team, self := m.ctx, m.provider, m.session.TeamID, m.session.UserID
 	names := map[string]string{}
@@ -139,14 +164,14 @@ func (m *Model) runUnreads(sig string) tea.Cmd {
 		names[id] = name
 	}
 	m.unreadBusy = true
-	m.status = fmt.Sprintf("Summarizing unreads in %d channels…", len(targets))
+	m.status = fmt.Sprintf("Summarizing unreads in %d channels…", len(items))
 	m.renderDestination()
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(ctx, 8*time.Minute)
 		defer cancel()
 		var sections []unreadSection
-		for _, target := range targets {
-			section := unreadSection{channel: target.id, label: target.label}
+		for _, target := range items {
+			section := unreadSection{channel: target.id, label: target.label, after: target.after, latest: target.latest}
 			page, err := api.UnreadMessages(ctx, target.id, target.after, target.latest, self)
 			if err != nil {
 				section.err = cleanLine(err.Error())
@@ -180,7 +205,7 @@ func mergeUnreadMessages(channel, threads []slack.Message) []slack.Message {
 	var out []slack.Message
 	for _, list := range [][]slack.Message{channel, threads} {
 		for _, message := range list {
-			if seen[message.TS] || message.User == "" && message.Text == "" {
+			if seen[message.TS] || message.DisplayText() == "" {
 				continue
 			}
 			seen[message.TS] = true
@@ -193,15 +218,28 @@ func mergeUnreadMessages(channel, threads []slack.Message) []slack.Message {
 	return out
 }
 
+// senderName picks the most useful name for a message, including bot posts.
+func senderName(message slack.Message, names map[string]string) string {
+	if name := names[message.User]; name != "" {
+		return name
+	}
+	if message.Username != "" {
+		return message.Username
+	}
+	if message.User != "" {
+		return message.User
+	}
+	if message.BotID != "" {
+		return "bot " + message.BotID
+	}
+	return "unknown sender"
+}
+
 // buildUnreadTranscript formats one channel's unreads with source links, within budget.
 func buildUnreadTranscript(team string, names map[string]string, channel string, messages []slack.Message) (string, bool) {
 	var out strings.Builder
 	for _, message := range messages {
-		name := names[message.User]
-		if name == "" {
-			name = message.User
-		}
-		line := fmt.Sprintf("[%s] %s %s\n%s\n", slack.TimestampTime(message.TS).UTC().Format(time.RFC3339), cleanLine(name), messageSourceURL(team, channel, message.TS), clean(message.Text))
+		line := fmt.Sprintf("[%s] %s %s\n%s\n", slack.TimestampTime(message.TS).UTC().Format(time.RFC3339), cleanLine(senderName(message, names)), messageSourceURL(team, channel, message.TS), clean(message.DisplayText()))
 		if out.Len()+len(line) > unreadBudget {
 			return out.String(), true
 		}
@@ -210,10 +248,11 @@ func buildUnreadTranscript(team string, names map[string]string, channel string,
 	return out.String(), false
 }
 
-// applyUnreads stores a finished run. A failed section stays visible on its channel.
+// applyUnreads stores a finished run. Blocks already shown keep their place and
+// are updated in place; blocks are removed only by mark-as-read.
 func (m *Model) applyUnreads(msg unreadsMsg) tea.Cmd {
 	m.unreadBusy = false
-	m.unreadSections = msg.sections
+	m.unreadSections = mergeSections(m.unreadSections, msg.sections)
 	m.unreadSig = msg.signature
 	m.unreadStamp = msg.generated
 	failed := 0
@@ -233,37 +272,55 @@ func (m *Model) applyUnreads(msg unreadsMsg) tea.Cmd {
 	return nil
 }
 
+// mergeSections updates blocks that exist and appends new ones, keeping order.
+func mergeSections(existing, fresh []unreadSection) []unreadSection {
+	out := append([]unreadSection{}, existing...)
+	index := map[string]int{}
+	for i, section := range out {
+		index[section.channel] = i
+	}
+	for _, section := range fresh {
+		if i, ok := index[section.channel]; ok {
+			out[i] = section
+			continue
+		}
+		index[section.channel] = len(out)
+		out = append(out, section)
+	}
+	return out
+}
+
 // unreadsKey handles the keys of the Unreads Summaries view. It reports whether
 // the key was used here, so other keys keep their normal meaning.
 func (m *Model) unreadsKey(key string) (tea.Cmd, bool) {
-	targets := m.unreadTargets()
+	items := m.unreadItems()
 	switch key {
 	case "n", "j", "down":
-		if len(targets) > 0 {
-			m.unreadIndex = (m.unreadIndex + 1) % len(targets)
+		if len(items) > 0 {
+			m.unreadIndex = (m.unreadIndex + 1) % len(items)
 			m.renderDestination()
 		}
 		return nil, true
 	case "p", "k", "up":
-		if len(targets) > 0 {
-			m.unreadIndex = (m.unreadIndex + len(targets) - 1) % len(targets)
+		if len(items) > 0 {
+			m.unreadIndex = (m.unreadIndex + len(items) - 1) % len(items)
 			m.renderDestination()
 		}
 		return nil, true
 	case "x":
-		return m.markBlockRead(targets), true
+		return m.markBlockRead(items), true
 	}
 	return nil, false
 }
 
 // markBlockRead marks the shown block's channel and its threads as read in Slack.
 // The block leaves the view only after Slack confirms.
-func (m *Model) markBlockRead(targets []unreadTarget) tea.Cmd {
-	if len(targets) == 0 {
+func (m *Model) markBlockRead(items []unreadTarget) tea.Cmd {
+	if len(items) == 0 {
 		return nil
 	}
-	index := min(m.unreadIndex, len(targets)-1)
-	target := targets[index]
+	index := min(m.unreadIndex, len(items)-1)
+	target := items[index]
 	if m.markingUnread == nil {
 		m.markingUnread = map[string]bool{}
 	}
@@ -330,8 +387,8 @@ func (m *Model) applyMarkedBlock(msg markedBlockMsg) {
 	m.renderDestination()
 }
 
-// dropUnreadBlock removes a channel from the unread state, its summary, and its
-// thread unreads, so the block disappears and does not come back on refresh.
+// dropUnreadBlock removes a channel block and its unread state, so it does not
+// come back on refresh.
 func (m *Model) dropUnreadBlock(msg markedBlockMsg) {
 	delete(m.unread, msg.channel)
 	m.remoteRead[msg.channel] = laterTS(m.remoteRead[msg.channel], msg.latest)
@@ -350,26 +407,27 @@ func (m *Model) dropUnreadBlock(msg markedBlockMsg) {
 	}
 	// The stored summaries still match what is left, so the view does not rerun.
 	m.unreadSig = m.unreadSignature()
-	if targets := m.unreadTargets(); len(targets) > 0 {
-		m.unreadIndex = min(m.unreadIndex, len(targets)-1)
+	if items := m.unreadItems(); len(items) > 0 {
+		m.unreadIndex = min(m.unreadIndex, len(items)-1)
 	} else {
 		m.unreadIndex = 0
 	}
 }
 
-// unreadsView renders one block at a time: the channel, its categorized summary,
-// and the keys that move between blocks or mark the block read.
+// unreadsView renders one framed block at a time, styled like a message block:
+// the channel on the top border and the newest message time on the right.
 func (m Model) unreadsView() string {
-	width := max(1, m.viewport.Width()-4)
+	width := max(1, m.viewport.Width())
+	inner := max(1, width-4)
 	muted := lipgloss.NewStyle().Foreground(m.muted())
-	bold := lipgloss.NewStyle().Bold(true)
-	targets := m.unreadTargets()
+	accent := lipgloss.NewStyle().Bold(true).Foreground(m.accent())
+	items := m.unreadItems()
 	sections := map[string]unreadSection{}
 	for _, section := range m.unreadSections {
 		sections[section.channel] = section
 	}
 	var b strings.Builder
-	b.WriteString(bold.Render(fmt.Sprintf("Unreads Summaries · %d channels", len(targets))) + "\n")
+	b.WriteString(lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf("Unreads Summaries · %d channels", len(items))) + "\n")
 	switch {
 	case m.demo:
 		b.WriteString(muted.Render("Unread summaries are offline in the demo.") + "\n")
@@ -380,32 +438,46 @@ func (m Model) unreadsView() string {
 	case !m.unreadStamp.IsZero():
 		b.WriteString(muted.Render("Summarized "+m.unreadStamp.Local().Format("Jan 02 15:04")) + "\n")
 	}
-	if len(targets) == 0 {
+	if len(items) == 0 {
 		b.WriteString("\nAll caught up. No unread messages.")
-		return b.String()
+		return ansi.Hardwrap(b.String(), width, true)
 	}
-	index := min(m.unreadIndex, len(targets)-1)
-	target := targets[index]
-	b.WriteString("\n" + bold.Render("# "+target.label) + "\n")
-	b.WriteString(muted.Render(fmt.Sprintf("Block %d of %d · %d unread", index+1, len(targets), target.count)) + "\n\n")
+	index := min(m.unreadIndex, len(items)-1)
+	target := items[index]
 	section, ok := sections[target.id]
+
+	stamp := ""
+	if at := slack.TimestampTime(target.latest); !at.IsZero() {
+		stamp = at.Local().Format("Jan 02 15:04")
+	}
+	title := "► " + target.label
+	left := ansi.Truncate(title, max(1, inner-lipgloss.Width(stamp)-1), "…")
+	header := accent.Render(left)
+	if gap := inner - lipgloss.Width(left) - lipgloss.Width(stamp); gap > 0 {
+		header += strings.Repeat(" ", gap) + muted.Render(stamp)
+	}
+
+	var body strings.Builder
+	body.WriteString(muted.Render(fmt.Sprintf("%d unread · block %d of %d", target.count, index+1, len(items))) + "\n\n")
 	switch {
 	case m.markingUnread[target.id]:
-		b.WriteString(muted.Render("Marking this block read…") + "\n")
+		body.WriteString(muted.Render("Marking this block read…"))
 	case !ok && m.unreadBusy:
-		b.WriteString(muted.Render("Waiting for summary…") + "\n")
+		body.WriteString(muted.Render("Waiting for summary…"))
 	case !ok:
-		b.WriteString(muted.Render("Not summarized yet. Press s to summarize.") + "\n")
+		body.WriteString(muted.Render("Not summarized yet. Press s to summarize."))
 	case section.err != "":
-		b.WriteString("Could not summarize: " + section.err + "\n")
+		body.WriteString("Could not summarize: " + section.err)
 	case section.text == "":
-		b.WriteString(muted.Render("No messages to categorize") + "\n")
+		body.WriteString(muted.Render("No readable messages to categorize"))
 	default:
-		b.WriteString(renderMarkdown(section.text, width) + "\n")
+		body.WriteString(renderMarkdown(section.text, inner))
 	}
 	if ok && section.partial {
-		b.WriteString("\n" + muted.Render("Partial: some unread messages were not read.") + "\n")
+		body.WriteString("\n\n" + muted.Render("Partial: some unread messages were not read."))
 	}
-	b.WriteString("\n" + muted.Render("n/p next/previous block · x mark read · s refresh"))
+	frame := lipgloss.NewStyle().Width(width).Padding(0, 1).Border(lipgloss.RoundedBorder()).BorderForeground(m.accent()).Render(header + "\n" + body.String())
+	b.WriteString("\n" + frame + "\n")
+	b.WriteString(muted.Render("n/p next/previous block · x mark read · s refresh"))
 	return b.String()
 }

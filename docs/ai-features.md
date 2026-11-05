@@ -1,6 +1,6 @@
 # AI destinations and deferred inference
 
-The application pins the AI assistant and AI summaries above ordinary conversations. The assistant answers questions from recent conversations, and conversation summaries run automatically. Daily digest generation and scheduled reminders are still pending. Neither AI view can post to Slack.
+The application pins the AI assistant and AI summaries above ordinary conversations. The assistant answers questions from recent conversations, and conversation summaries run automatically. Scheduled daily delivery and reminders are still pending. Neither AI view can post to Slack.
 
 ## Private conversation summaries (implemented)
 
@@ -35,7 +35,11 @@ Answers are rendered from Markdown in the pane: headings, bold, italics, code, l
 
 ## AI summaries
 
-Generate a daily catch-up and a return-to-client catch-up covering unread/missed activity, bounded by the same two-week retrieval window. Organize it as an overview, top to-dos, updates/decisions, and messages awaiting the user's reply. Tie action items and pending replies to source messages, distinguish explicit commitments from suggested follow-ups, and avoid inventing deadlines or treating a model guess as a confirmed todo.
+The AI Summaries view is your catch-up. It reads the unread messages across your conversations, the same set the Unreads Summaries view uses, and writes one Markdown summary with the headings "What you missed", "Top to-dos", "Updates and decisions" and "Messages waiting for your reply". Each bullet names its conversation and links to the source message. Top to-dos appear only when someone asked for an action, and no owners or deadlines are invented.
+
+It runs when the view opens and reruns only when unread messages change. `s` regenerates. It reads up to 20 conversations and 150 KB of transcript; anything cut off is labeled partial. Failures are shown in the view and retried the next time it opens. Without AI enabled, the view explains how to turn it on.
+
+Bot, alert and integration posts are read too, including their attachments and block text, so alert channels are not empty.
 
 A local last-client-visit timestamp is persisted now. Slack's per-conversation read markers are also tracked. Neither provides an exact global last-login timestamp across all native Slack clients, and the future catch-up must explain its coverage accordingly. Scheduling, daily delivery time, summary persistence/deduplication, and any operation while the app is closed belong to the inference integration phase. No background daemon is installed now.
 

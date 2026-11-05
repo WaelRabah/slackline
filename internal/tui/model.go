@@ -101,6 +101,7 @@ type Model struct {
 	unreadStamp       time.Time
 	unreadIndex       int
 	markingUnread     map[string]bool
+	catchUp           catchUpState
 	summaryViewport   viewport.Model
 	directory         []slack.User
 	finderGeneration  int
@@ -1594,10 +1595,13 @@ func (m Model) View() tea.View {
 		help = "Type to filter · Ctrl+j/k select · Enter opens · Esc closes"
 	}
 	composerLabel, composerBody := "COMPOSER · "+modeLabel, m.input.View()
-	if m.destination == aiAssistant && m.provider.Ready() && !m.demo {
+	if m.destination == aiSummaries && m.provider.Ready() && !m.demo {
+		composerLabel = "CATCH-UP"
+		composerBody = "Read-only · s refreshes the catch-up from your unread messages"
+	} else if m.destination == aiAssistant && m.provider.Ready() && !m.demo {
 		composerLabel = "ASK · Enter sends"
 		composerBody = m.input.View()
-	} else if m.destination == aiAssistant || m.destination == aiSummaries {
+	} else if m.destination == aiAssistant || (m.destination == aiSummaries && !m.provider.Ready()) {
 		composerLabel = "AI DISABLED"
 		composerBody = "Enable AI and set a chat model in Settings (,). Conversation summaries run automatically."
 	}

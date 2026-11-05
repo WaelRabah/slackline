@@ -37,6 +37,9 @@ func (m *Model) summarizeConversation() tea.Cmd {
 	if m.destination == unreadsDestination {
 		return m.refreshUnreads()
 	}
+	if m.destination == aiSummaries {
+		return m.refreshCatchUp()
+	}
 	if m.active == "" || m.destination != "" {
 		m.status = "Open a conversation to summarize it"
 		return nil
@@ -115,6 +118,8 @@ func (m *Model) summaryHook(msg tea.Msg) tea.Cmd {
 		m.recordAnswer(event)
 	case unreadsMsg:
 		return m.applyUnreads(event)
+	case catchUpMsg:
+		m.applyCatchUp(event)
 	case markedBlockMsg:
 		m.applyMarkedBlock(event)
 	}
