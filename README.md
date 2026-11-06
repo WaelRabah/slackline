@@ -162,6 +162,8 @@ Only visible previews load, one at a time. Previews remain in a bounded in-memor
 | `h`, `l`, `w`, `b`, `0`, `$`, `x` in normal composer | Move or delete text |
 | `Enter` in insert mode | Send the typed message |
 | `r` / `R` | Reply to selected message in its thread / reload current conversation |
+| `e` | React to the selected message or reply: type to fuzzy-search emoji (recent and common first), ↑/↓ or Ctrl+j/k choose, Enter reacts, Enter on one you already added removes it, Esc cancels |
+| `:name` in the composer | Emoji dropdown after two letters: ↑/↓ choose, Tab or Enter inserts `:name:`, Esc dismisses |
 | `v` on a message | Enlarge its image/video-thumbnail previews; arrows cycle, `Esc` returns |
 | `s` / `S` | Generate or refresh private 14-day summary / expand the pinned summary |
 | `,` or forwarded `Cmd+,` | Open Settings; `Ctrl+s` saves, `Esc` cancels |

@@ -42,6 +42,7 @@ const (
 	settingsMode
 	summaryMode
 	imageMode
+	reactMode
 )
 
 type bootstrapMsg struct {
@@ -83,6 +84,13 @@ type Model struct {
 	reactionQueue     map[string]reactionRequest
 	reactionSnapshots map[string]reactionSnapshot
 	emojis            map[string]string
+	picker            *emojiPicker
+	recentEmoji       []string
+	emojiSugg         []string
+	emojiStart        int
+	emojiIndex        int
+	emojiQuery        string
+	emojiDismissed    string
 	revealMessage     string
 	searchHits        []slack.SearchHit
 	searchLoading     bool
@@ -305,6 +313,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case reactionsMsg:
 		cmd := m.applyReactions(msg)
+		return m, cmd
+	case reactedMsg:
+		cmd := m.applyReacted(msg)
 		return m, cmd
 	case emojisMsg:
 		m.emojis = msg.values
@@ -614,12 +625,20 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.mode == finder {
 			return m.updateFinder(msg)
 		}
+		if m.mode == reactMode {
+			return m.updateReact(msg)
+		}
 		if m.mode == insert {
+			if m.emojiDropdownKey(msg.String()) {
+				return m, nil
+			}
 			switch msg.String() {
 			case "esc":
+				m.emojiSugg = nil
 				m.closeRightmost()
 				return m, nil
 			case "enter":
+				m.emojiSugg = nil
 				return m, m.send()
 			case "ctrl+t":
 				return m, m.dictate()
@@ -628,6 +647,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				var cmd tea.Cmd
 				m.input, cmd = m.input.Update(msg)
 				m.drafts[m.draftKey()] = m.input.Value()
+				m.refreshEmojiSuggestions()
 				return m, cmd
 			}
 			return m, nil
@@ -637,11 +657,15 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd := m.mouseClick(msg)
 		return m, cmd
 	case tea.PasteMsg:
+		if m.mode == reactMode {
+			return m.updateReact(msg)
+		}
 		// Pasting never executes navigation commands or sends a message.
 		if m.mode == insert && !m.sending {
 			var cmd tea.Cmd
 			m.input, cmd = m.input.Update(msg)
 			m.drafts[m.draftKey()] = m.input.Value()
+			m.refreshEmojiSuggestions()
 			return m, cmd
 		}
 		if m.mode == finder {
@@ -753,6 +777,10 @@ func (m *Model) updateNormal(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		m.renderHistory()
 		return *m, m.input.Focus()
+	case "e":
+		if m.focus == messages || m.focus == parentPane {
+			return *m, m.openReactPicker()
+		}
 	case ",", "super+,", "cmd+,":
 		return *m, m.openSettings()
 	case "s":
@@ -1470,6 +1498,8 @@ func (m Model) View() tea.View {
 		content = m.paneFrame("PRIVATE SUMMARY · Esc closes", m.summaryViewport.View(), m.width, m.mainHeight(), true)
 	} else if m.mode == imageMode {
 		content = m.imageView()
+	} else if m.mode == reactMode && m.picker != nil {
+		content = m.pickerView()
 	} else if m.mode == finder {
 		lines := []string{m.query.View(), "Names/users · ? text then Enter searches messages (14 days)"}
 		count := max(1, m.mainHeight()-5)
@@ -1579,6 +1609,9 @@ func (m Model) View() tea.View {
 	if m.mode == finder {
 		modeLabel = "FIND"
 	}
+	if m.mode == reactMode {
+		modeLabel = "REACT"
+	}
 	focusLabel := []string{"channels", "replies/messages", "composer", "conversation"}[m.focus]
 	footer := fmt.Sprintf("%s · %s · %s", modeLabel, focusLabel, m.status)
 	soundLabel := "sound on"
@@ -1596,12 +1629,18 @@ func (m Model) View() tea.View {
 	if m.stateWarning != "" {
 		footer += " · " + m.stateWarning
 	}
-	help := "j/k blocks · Enter thread · r reply · R reload · s summary · S expand · H hide · J/K scroll · , settings · / find"
+	help := "j/k blocks · Enter thread · r reply · e react · R reload · s summary · S expand · H hide · J/K scroll · , settings · / find"
 	if m.focus == sidebar {
 		help = "j/k select · Enter open/fold · Space fold · f recent/all · m mute · , settings · / find"
 	}
 	if m.mode == insert {
-		help = "Enter sends · Esc closes rightmost pane · Ctrl+C quits"
+		help = "Enter sends · :name emoji · Esc closes rightmost pane · Ctrl+C quits"
+		if len(m.emojiSugg) > 0 {
+			help = "↑/↓ choose emoji · Tab/Enter insert · Esc dismiss"
+		}
+	}
+	if m.mode == reactMode {
+		help = "Type to search · ↑/↓ or Ctrl+j/k select · Enter reacts (again removes) · Esc cancels"
 	}
 	if m.mode == settingsMode {
 		help = "j/k fields · Enter edit/toggle · Ctrl+S save · Esc cancel"
@@ -1637,7 +1676,11 @@ func (m Model) View() tea.View {
 		}
 	}
 	composerPane := m.paneFrame(composerLabel, composerBody, m.width, 4, m.focus == composer && m.mode != finder)
-	content = title.Render(header) + "\n\n" + content + "\n" + composerPane + "\n" + lipgloss.NewStyle().Foreground(muted).MaxWidth(m.width).Render(footer) + "\n" + lipgloss.NewStyle().Foreground(muted).MaxWidth(m.width).Render(help)
+	content = title.Render(header) + "\n\n" + content
+	if m.mode == insert {
+		content = overlayBottom(content, m.dropdownView(), 2)
+	}
+	content += "\n" + composerPane + "\n" + lipgloss.NewStyle().Foreground(muted).MaxWidth(m.width).Render(footer) + "\n" + lipgloss.NewStyle().Foreground(muted).MaxWidth(m.width).Render(help)
 	view := tea.NewView(lipgloss.NewStyle().MaxWidth(m.width).MaxHeight(m.height).Render(content))
 	view.MouseMode = tea.MouseModeCellMotion
 	view.AltScreen = true

@@ -36,3 +36,28 @@ func (c *Client) Reactions(ctx context.Context, channel, ts string) ([]Reaction,
 	err := c.call(ctx, "reactions.get", url.Values{"channel": {channel}, "timestamp": {ts}, "full": {"true"}}, &response)
 	return response.Message.Reactions, err
 }
+
+// ReactAPI adds and removes the signed-in user's own reaction. It is optional
+// so a restricted client still reads messages.
+type ReactAPI interface {
+	AddReaction(ctx context.Context, channel, ts, name string) error
+	RemoveReaction(ctx context.Context, channel, ts, name string) error
+}
+
+// AddReaction is idempotent: Slack's already_reacted means the goal is met.
+func (c *Client) AddReaction(ctx context.Context, channel, ts, name string) error {
+	err := c.call(ctx, "reactions.add", url.Values{"channel": {channel}, "timestamp": {ts}, "name": {name}}, nil)
+	if apiErr, ok := err.(*APIError); ok && apiErr.Code == "already_reacted" {
+		return nil
+	}
+	return err
+}
+
+// RemoveReaction is idempotent: Slack's no_reaction means it is already gone.
+func (c *Client) RemoveReaction(ctx context.Context, channel, ts, name string) error {
+	err := c.call(ctx, "reactions.remove", url.Values{"channel": {channel}, "timestamp": {ts}, "name": {name}}, nil)
+	if apiErr, ok := err.(*APIError); ok && apiErr.Code == "no_reaction" {
+		return nil
+	}
+	return err
+}
