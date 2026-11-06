@@ -34,8 +34,9 @@ func TestLatestCapsTheList(t *testing.T) {
 
 func TestLatestShowsWhereEachChimeCameFrom(t *testing.T) {
 	m := Model{soundEnabled: true, users: map[string]string{"U2": "Ana"}}
+	m.session.UserID = "UME"
 	m.viewport.SetWidth(100)
-	m.noteIncomingMessage("C1", slack.Message{TS: "1793833200.000100", User: "U2", Text: "deploy done"}, "Slack knock_brush.mp3")
+	m.noteIncomingMessage("C1", slack.Message{TS: "1793833200.000100", User: "U2", Text: "<@UME> deploy done"}, "Slack knock_brush.mp3")
 	m.noteSummaryReady("AI catch-up ready", time.Unix(1793833300, 0))
 	view, _ := m.latestLayout()
 	view = ansi.Strip(view)

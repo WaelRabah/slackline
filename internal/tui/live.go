@@ -238,7 +238,7 @@ func (m *Model) updateLive(event slack.LiveEvent) tea.Cmd {
 		bootstrap = m.bootstrap()
 	}
 	var sound, popup tea.Cmd
-	if !own && (message.User != "" || message.BotID != "" || message.Username != "") && slack.TimestampTime(message.TS).After(m.startedAt) && m.soundEnabled {
+	if !own && m.alertsUser(message.Channel, message) && (message.User != "" || message.BotID != "" || message.Username != "") && slack.TimestampTime(message.TS).After(m.startedAt) && m.soundEnabled {
 		sound = m.notify()
 		popup = m.popupCmd(m.conversationFor(message.Channel), message)
 	}
