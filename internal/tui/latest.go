@@ -238,10 +238,8 @@ var latestYellow = lipgloss.Color("#F4B860")
 var latestOrange = lipgloss.Color("#F28C28")
 
 // latestLabel is the sidebar label, with the count of new entries.
+// latestLabel is the sidebar heading; the unseen count renders as a badge, as Threads does.
 func (m Model) latestLabel() string {
-	if m.latestUnseen > 0 {
-		return fmt.Sprintf("⏱ Latest (%d)", m.latestUnseen)
-	}
 	return "⏱ Latest"
 }
 

@@ -116,6 +116,9 @@ type Model struct {
 	unreadPending     int
 	unreadOK          bool
 	summaryViewport   viewport.Model
+	summaryHidden     bool
+	summaryScroll     int
+	summaryScrollFor  string
 	directory         []slack.User
 	finderGeneration  int
 	finderUsers       []string
@@ -752,10 +755,20 @@ func (m *Model) updateNormal(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case ",", "super+,", "cmd+,":
 		return *m, m.openSettings()
 	case "s":
+		m.summaryHidden = false
 		cmd := m.summarizeConversation()
 		return *m, cmd
 	case "S":
 		m.expandSummary()
+		return *m, nil
+	case "H":
+		m.toggleSummary()
+		return *m, nil
+	case "J":
+		m.scrollSummary(1)
+		return *m, nil
+	case "K":
+		m.scrollSummary(-1)
 		return *m, nil
 	case "r":
 		if m.focus == messages || m.focus == parentPane {
@@ -1137,6 +1150,16 @@ func (m Model) label(c slack.Conversation) string {
 	}
 	return "#" + cleanLine(c.Name)
 }
+
+// activeIndex returns the index of the open conversation, or -1 when none is open.
+func (m Model) activeIndex() int {
+	for i, c := range m.conversations {
+		if c.ID == m.active {
+			return i
+		}
+	}
+	return -1
+}
 func (m Model) activeLabel() string {
 	for _, c := range m.conversations {
 		if c.ID == m.active {
@@ -1341,7 +1364,7 @@ func (m Model) messageBlock(message slack.Message, width int) string {
 	}
 	body := strings.ReplaceAll(m.messageText(message.DisplayText()), "\t", "    ")
 	body = ansi.Hardwrap(body, inner, true)
-	body += m.imageBlocks(message, inner)
+	body += m.mediaBlocks(message, inner)
 	content := header + "\n\n" + body
 	if message.ReplyCount > 0 {
 		word := "replies"
@@ -1368,18 +1391,10 @@ func (m Model) messageBlock(message slack.Message, width int) string {
 	return style.Render(content)
 }
 
-var mention = regexp.MustCompile(`<@([A-Z0-9]+)>`)
-
 func (m Model) messageText(text string) string {
+	// Mentions are resolved by renderInline's control tokens so code blocks keep their literal text.
 	text = expandSlackDates(text)
-	text = mention.ReplaceAllStringFunc(text, func(value string) string {
-		id := value[2 : len(value)-1]
-		if name := m.users[id]; name != "" {
-			return "@" + name
-		}
-		return "@" + id
-	})
-	return m.emojify(clean(html.UnescapeString(text)))
+	return m.renderMarkdown(clean(html.UnescapeString(text)))
 }
 
 // Strip terminal control sequences before rendering workspace-controlled content.
@@ -1494,7 +1509,7 @@ func (m Model) View() tea.View {
 				id := m.conversations[row.index].ID
 				prefix := "  "
 				if id == m.active {
-					prefix = "• "
+					prefix = "▶ "
 				}
 				badge = m.unreadBadge(id)
 				if badge != "" {
@@ -1506,9 +1521,28 @@ func (m Model) View() tea.View {
 			} else if row.destination == threadsDestination && m.feedUnread > 0 {
 				badge = fmt.Sprintf(" [%d]", m.feedUnread)
 				unread = true
+			} else if row.destination == latestDestination && m.latestUnseen > 0 {
+				// Latest glows and counts exactly like Threads.
+				badge = fmt.Sprintf(" [%d]", m.latestUnseen)
+				unread = true
+			} else if row.index < 0 && row.group != "" {
+				// A section heading glows like Threads when any of its conversations has unread messages.
+				if total, exact, any := m.groupUnread(row.group); any {
+					badge = fmt.Sprintf(" [%d]", total)
+					if !exact {
+						badge = fmt.Sprintf(" [%d+]", total)
+					}
+					unread = true
+				}
 			}
 			if row.index >= 0 && m.channelTyping(m.conversations[row.index].ID) {
 				badge = " [typing]" + badge
+			}
+			// A folded section hides its rows, so name the open conversation on the heading.
+			if row.index < 0 && row.group != "" && m.collapsed[row.group] {
+				if ai := m.activeIndex(); ai >= 0 && m.indexInGroup(ai, row.group) {
+					label += " · ▶ " + m.label(m.conversations[ai])
+				}
 			}
 			label = ansi.Truncate(label, max(1, sw-4-lipgloss.Width(badge)), "…")
 			// Unread counts sit at the right edge of the row.
@@ -1520,6 +1554,8 @@ func (m Model) View() tea.View {
 				label = lipgloss.NewStyle().Width(sw - 4).Bold(true).Foreground(lipgloss.Color("#101418")).Background(accent).Render(ansi.Truncate(label, sw-4, "…"))
 			} else if unread {
 				label = lipgloss.NewStyle().Width(sw - 4).Bold(true).Foreground(lipgloss.Color("#F4B860")).Background(lipgloss.Color("#211C14")).Render(label)
+			} else if row.index >= 0 && m.conversations[row.index].ID == m.active {
+				label = lipgloss.NewStyle().Bold(true).Foreground(m.accent()).Render(label)
 			} else if row.index < 0 {
 				label = lipgloss.NewStyle().Bold(true).Foreground(muted).Render(label)
 			}
@@ -1559,7 +1595,7 @@ func (m Model) View() tea.View {
 	if m.stateWarning != "" {
 		footer += " · " + m.stateWarning
 	}
-	help := "j/k blocks · Enter thread · r reply · R reload · s summary · S expand · , settings · / find"
+	help := "j/k blocks · Enter thread · r reply · R reload · s summary · S expand · H hide · J/K scroll · , settings · / find"
 	if m.focus == sidebar {
 		help = "j/k select · Enter open/fold · Space fold · f recent/all · m mute · , settings · / find"
 	}

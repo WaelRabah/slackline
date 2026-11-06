@@ -29,7 +29,7 @@ func TestLatestCountsUnseenEntries(t *testing.T) {
 	m := Model{recentSeen: map[string]bool{}, destination: ""}
 	m.noteRecent(recentItem{at: time.Unix(1, 0), key: "a"})
 	m.noteRecent(recentItem{at: time.Unix(2, 0), key: "b"})
-	if m.latestUnseen != 2 || m.latestLabel() != "⏱ Latest (2)" {
+	if m.latestUnseen != 2 || m.latestLabel() != "⏱ Latest" {
 		t.Fatalf("unseen=%d label=%q", m.latestUnseen, m.latestLabel())
 	}
 	m.destination = latestDestination
