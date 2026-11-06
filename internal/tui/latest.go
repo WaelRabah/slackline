@@ -169,7 +169,7 @@ func (m Model) latestLayout() (string, int) {
 	}
 	var b strings.Builder
 	b.WriteString(accent.Render(fmt.Sprintf("Latest · %d", len(m.recent))) + "\n")
-	b.WriteString(muted.Render("Enter opens · x dismisses") + "\n")
+	b.WriteString(muted.Render("Enter or click opens · e react · x dismisses") + "\n")
 	if len(m.recent) == 0 {
 		b.WriteString("\nNothing yet. New messages and finished summaries appear here.")
 		return ansi.Hardwrap(b.String(), width, true), 0

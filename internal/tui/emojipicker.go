@@ -163,6 +163,7 @@ type emojiPicker struct {
 	query       string
 	results     []string
 	index       int
+	returnTo    mode // the mode to restore on close, so a draft in progress is not lost
 }
 
 type reactedMsg struct {
@@ -171,19 +172,40 @@ type reactedMsg struct {
 	err               error
 }
 
-// reactionTarget is the message the `e` key applies to: the selected block in
-// a conversation or thread, the thread's parent pane, or the selected thread
-// in the Threads feed.
+// reactionTarget is the message the `e` key applies to, wherever it is read:
+// the selected block in a conversation or thread, the thread's parent pane,
+// the selected thread in the Threads feed, the selected Latest entry, or the
+// newest message of the selected Unreads block.
 func (m Model) reactionTarget() (channel, ts string, ok bool) {
-	if m.destination == threadsDestination {
+	switch m.destination {
+	case threadsDestination:
 		for _, thread := range m.feed {
 			if thread.Key() == m.feedSelection {
 				return thread.Root.Channel, thread.Root.TS, true
 			}
 		}
 		return "", "", false
+	case latestDestination:
+		if len(m.recent) == 0 {
+			return "", "", false
+		}
+		item := m.recent[min(m.latestIndex, len(m.recent)-1)]
+		if item.kind != "message" || item.conversation.ID == "" {
+			return "", "", false
+		}
+		return item.conversation.ID, item.message.TS, true
+	case unreadsDestination:
+		items := m.unreadItems()
+		if len(items) == 0 {
+			return "", "", false
+		}
+		item := items[min(m.unreadIndex, len(items)-1)]
+		return item.id, item.latest, item.latest != ""
+	case "":
+	default:
+		return "", "", false
 	}
-	if m.destination != "" || m.active == "" {
+	if m.active == "" {
 		return "", "", false
 	}
 	if m.focus == parentPane && m.thread != nil {
@@ -218,6 +240,11 @@ func (m Model) findMessage(channel, ts string) (slack.Message, bool) {
 			return thread.Root, true
 		}
 	}
+	for _, item := range m.recent {
+		if item.kind == "message" && item.conversation.ID == channel && item.message.TS == ts {
+			return item.message, true
+		}
+	}
 	return slack.Message{}, false
 }
 
@@ -244,7 +271,7 @@ func (m *Model) openReactPicker() tea.Cmd {
 		m.status = "Select a message to react to"
 		return nil
 	}
-	m.picker = &emojiPicker{channel: channel, ts: ts}
+	m.picker = &emojiPicker{channel: channel, ts: ts, returnTo: m.mode}
 	m.picker.refresh(*m)
 	m.mode = reactMode
 	return nil
@@ -260,8 +287,12 @@ func (p *emojiPicker) refresh(m Model) {
 }
 
 func (m *Model) closePicker() {
+	back := normal
+	if m.picker != nil {
+		back = m.picker.returnTo
+	}
 	m.picker = nil
-	m.mode = normal
+	m.mode = back
 }
 
 func (m *Model) updateReact(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -404,6 +435,11 @@ func (m *Model) editReaction(msg reactedMsg) {
 			}
 		}
 	}
+	for i := range m.recent {
+		if m.recent[i].conversation.ID == msg.channel {
+			change(&m.recent[i].message)
+		}
+	}
 	for i := range m.feed {
 		if m.feed[i].Root.Channel != msg.channel {
 			continue
@@ -427,8 +463,8 @@ func (m Model) pickerView() string {
 	if strings.TrimSpace(p.query) != "" {
 		hint = "Fuzzy match on name"
 	}
-	lines := []string{prompt, muted.Render(hint)}
-	count := max(1, m.mainHeight()-6)
+	lines := []string{prompt, muted.Render(hint), muted.Render(ansi.Truncate(m.reactionTargetLabel(p.channel, p.ts), max(1, m.width-6), "…"))}
+	count := max(1, m.mainHeight()-7)
 	start := max(0, p.index-count+1)
 	for i := start; i < min(len(p.results), start+count); i++ {
 		name := p.results[i]
@@ -447,6 +483,20 @@ func (m Model) pickerView() string {
 		lines = append(lines, "No matching emoji")
 	}
 	return m.paneFrame("ADD REACTION", strings.Join(lines, "\n"), m.width, m.mainHeight(), true)
+}
+
+// reactionTargetLabel names what the reaction will land on.
+func (m Model) reactionTargetLabel(channel, ts string) string {
+	label := "on " + m.conversationLabel(m.conversationFor(channel))
+	if message, ok := m.findMessage(channel, ts); ok {
+		text := cleanLine(m.messageText(message.DisplayText()))
+		if text != "" {
+			label += " · " + senderName(message, m.users) + ": " + text
+		}
+	} else {
+		label += " · newest message"
+	}
+	return label
 }
 
 // ---- composer :emoji: dropdown ---------------------------------------

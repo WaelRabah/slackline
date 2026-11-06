@@ -642,6 +642,8 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.send()
 			case "ctrl+t":
 				return m, m.dictate()
+			case "ctrl+e":
+				return m, m.openReactPicker()
 			}
 			if !m.sending {
 				var cmd tea.Cmd
@@ -778,9 +780,7 @@ func (m *Model) updateNormal(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.renderHistory()
 		return *m, m.input.Focus()
 	case "e":
-		if m.focus == messages || m.focus == parentPane {
-			return *m, m.openReactPicker()
-		}
+		return *m, m.openReactPicker()
 	case ",", "super+,", "cmd+,":
 		return *m, m.openSettings()
 	case "s":
@@ -1634,7 +1634,7 @@ func (m Model) View() tea.View {
 		help = "j/k select · Enter open/fold · Space fold · f recent/all · m mute · , settings · / find"
 	}
 	if m.mode == insert {
-		help = "Enter sends · :name emoji · Esc closes rightmost pane · Ctrl+C quits"
+		help = "Enter sends · :name emoji · Ctrl+E react · Esc closes rightmost pane · Ctrl+C quits"
 		if len(m.emojiSugg) > 0 {
 			help = "↑/↓ choose emoji · Tab/Enter insert · Esc dismiss"
 		}

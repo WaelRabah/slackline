@@ -162,7 +162,8 @@ Only visible previews load, one at a time. Previews remain in a bounded in-memor
 | `h`, `l`, `w`, `b`, `0`, `$`, `x` in normal composer | Move or delete text |
 | `Enter` in insert mode | Send the typed message |
 | `r` / `R` | Reply to selected message in its thread / reload current conversation |
-| `e` | React to the selected message or reply: type to fuzzy-search emoji (recent and common first), ↑/↓ or Ctrl+j/k choose, Enter reacts, Enter on one you already added removes it, Esc cancels |
+| `e` / Ctrl+E | React from any view: the selected message or reply, a thread parent, a Threads entry, a Latest entry, or the newest message of an Unreads block. Ctrl+E also works while typing and returns to your draft. Pick an emoji: type to fuzzy-search emoji (recent and common first), ↑/↓ or Ctrl+j/k choose, Enter reacts, Enter on one you already added removes it, Esc cancels |
+| Mouse click | Message pane: select a block. Latest, Unreads and Threads: open that entry's conversation (Latest and Unreads scroll to the message; Enter does the same from the keyboard) |
 | `:name` in the composer | Emoji dropdown after two letters: ↑/↓ choose, Tab or Enter inserts `:name:`, Esc dismisses |
 | `v` on a message | Enlarge its image/video-thumbnail previews; arrows cycle, `Esc` returns |
 | `s` / `S` | Generate or refresh private 14-day summary / expand the pinned summary |
