@@ -23,3 +23,10 @@ func TestMutedChannelsStayOutOfLatest(t *testing.T) {
 		t.Fatal("message from a muted channel was added to Latest")
 	}
 }
+
+// A channel muted in Slack must reach Latest within a minute, not a session.
+func TestMutedListRefreshesWithinAMinute(t *testing.T) {
+	if mutedRefresh > time.Minute {
+		t.Fatalf("mute list refresh is %s; a mute made in Slack would show in Latest for that long", mutedRefresh)
+	}
+}

@@ -8,7 +8,8 @@ import (
 	"github.com/WaelRabah/slackline/internal/slack"
 )
 
-const mutedRefresh = 10 * time.Minute
+// mutedRefresh bounds how long a mute made in Slack takes to reach Latest. The daily tick runs every minute.
+const mutedRefresh = time.Minute
 
 // mutedMsg carries the muted conversations read from the user's Slack preferences.
 type mutedMsg struct {
