@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/WaelRabah/slackline/internal/logs"
 	"io"
 	"net/http"
 	"net/url"
@@ -117,7 +118,12 @@ type chatChoice struct {
 
 // postChat sends one chat-completions request with credential-safe errors. It
 // never follows redirects, so the bearer key cannot be sent to another host.
-func postChat(ctx context.Context, settings Settings, payload map[string]any) (chatChoice, error) {
+func postChat(ctx context.Context, settings Settings, payload map[string]any) (choice chatChoice, err error) {
+	defer func() {
+		if err != nil {
+			logs.Error("ai", err)
+		}
+	}()
 	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
 	data, err := json.Marshal(payload)

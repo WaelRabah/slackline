@@ -5,9 +5,12 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/WaelRabah/slackline/internal/logs"
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -24,10 +27,42 @@ import (
 var version = "dev"
 
 func main() {
-	if err := run(); err != nil {
+	closeLogs := openLogs()
+	if err := runSafely(); err != nil {
+		logs.Error("app", err)
 		fmt.Fprintln(os.Stderr, "Error:", err)
+		closeLogs()
 		os.Exit(1)
 	}
+	logs.Info("app", "stopped")
+	closeLogs()
+}
+
+// openLogs writes errors to ~/.slackline/slackline.log. Logging problems never stop the app.
+func openLogs() func() {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "warning: no log file:", err)
+		return func() {}
+	}
+	path, err := logs.Open(filepath.Join(home, ".slackline"))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "warning: no log file:", err)
+		return func() {}
+	}
+	logs.Info("app", "started; log file "+path)
+	return logs.Close
+}
+
+// runSafely turns a panic into a logged error instead of a crash without a trace.
+func runSafely() (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			logs.Panic("app", r, debug.Stack())
+			err = errors.New("unexpected failure; details are in ~/.slackline/slackline.log")
+		}
+	}()
+	return run()
 }
 
 func run() error {

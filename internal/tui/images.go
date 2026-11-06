@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"github.com/WaelRabah/slackline/internal/logs"
 	"image"
 	"strings"
 	"time"
@@ -69,6 +70,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			entry.image = result.image
 			entry.raw = result.raw
 			if result.err != nil {
+				logs.Error("image", result.err)
 				entry.error = cleanLine(result.err.Error())
 			}
 		}

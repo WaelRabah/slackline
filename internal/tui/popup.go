@@ -2,6 +2,8 @@ package tui
 
 import (
 	"context"
+	"fmt"
+	"github.com/WaelRabah/slackline/internal/logs"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -46,7 +48,9 @@ func (m Model) popupCmd(conversation slack.Conversation, message slack.Message) 
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
-		_ = exec.CommandContext(ctx, "/usr/bin/osascript", "-e", script).Run()
+		if err := exec.CommandContext(ctx, "/usr/bin/osascript", "-e", script).Run(); err != nil {
+			logs.Error("popup", fmt.Errorf("osascript: %w", err))
+		}
 		return nil
 	}
 }

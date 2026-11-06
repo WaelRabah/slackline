@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/WaelRabah/slackline/internal/logs"
 	"net/http"
 	"net/url"
 	"strings"
@@ -181,6 +182,7 @@ func RunLive(ctx context.Context, api LiveAPI, emit func(LiveEvent)) {
 		if ctx.Err() != nil {
 			return
 		}
+		logs.Error("live", err)
 		wait := delay
 		var rate *RateLimitError
 		if errors.As(err, &rate) {
