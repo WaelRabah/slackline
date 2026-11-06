@@ -55,10 +55,24 @@ func (m *Model) noteRecent(item recentItem) {
 	m.persistLatest()
 }
 
+// alertsUser reports whether a live message should sound, pop up, and reach Latest.
+// Direct and group DMs always do. Channels do only when they mention the user.
+func (m Model) alertsUser(channel string, message slack.Message) bool {
+	conversation := m.conversationFor(channel)
+	if conversation.IsIM || conversation.IsMPIM {
+		return true
+	}
+	if m.session.UserID == "" {
+		return false
+	}
+	id := "<@" + m.session.UserID
+	return strings.Contains(message.Text, id+">") || strings.Contains(message.Text, id+"|")
+}
+
 // noteIncomingMessage records a live message that did not come from the user.
 func (m *Model) noteIncomingMessage(channel string, message slack.Message, sound string) {
-	// Muted conversations do not appear in Latest.
-	if m.mutedChannels[channel] {
+	// Muted conversations do not appear in Latest, and channel chatter that does not mention the user is skipped.
+	if m.mutedChannels[channel] || !m.alertsUser(channel, message) {
 		return
 	}
 	conversation := m.conversationFor(channel)

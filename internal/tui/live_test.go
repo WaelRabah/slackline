@@ -16,9 +16,9 @@ func applyLive(m *Model, event slack.LiveEvent) {
 func TestOnlyNewIncomingMessageEventsChime(t *testing.T) {
 	m, calls := activityModel(t)
 	applyLive(m, slack.LiveEvent{Type: "_connection", State: "live"})
-	message := slack.Message{Channel: m.active, User: "UALICE", TS: ts(m.now().Add(time.Second)), Text: "actual incoming"}
+	message := slack.Message{Channel: m.active, User: "UALICE", TS: ts(m.now().Add(time.Second)), Text: "<@" + m.session.UserID + "> actual incoming"}
 	applyLive(m, slack.LiveEvent{Type: "message", Message: message})
-	if *calls != 1 || m.history[len(m.history)-1].Text != "actual incoming" {
+	if *calls != 1 || m.history[len(m.history)-1].Text != "<@"+m.session.UserID+"> actual incoming" {
 		t.Fatal("live message did not chime or update conversation immediately")
 	}
 	applyLive(m, slack.LiveEvent{Type: "message", Message: message})
@@ -70,7 +70,7 @@ func TestTypingIsNamedScopedExpiresAndClearsOnMessage(t *testing.T) {
 	if m.typingText(m.active, "") != "Bob is typing…" {
 		t.Fatal("typing refresh or expiry failed")
 	}
-	applyLive(m, slack.LiveEvent{Type: "message", Message: slack.Message{Channel: m.active, User: "UBOB", TS: ts(now.Add(time.Second)), Text: "done"}})
+	applyLive(m, slack.LiveEvent{Type: "message", Message: slack.Message{Channel: m.active, User: "UBOB", TS: ts(now.Add(time.Second)), Text: "<@" + m.session.UserID + "> done"}})
 	if m.typingText(m.active, "") != "" {
 		t.Fatal("typing remained after message")
 	}
@@ -92,7 +92,7 @@ func TestThreadRepliesUpdateCurrentThreadWithoutChimingPolls(t *testing.T) {
 	next, _ = m.Update(cmd())
 	*m = next.(Model)
 	before := len(m.history)
-	reply := slack.Message{Channel: m.active, ThreadTS: m.thread.ts, User: "UBOB", TS: ts(m.now().Add(time.Second)), Text: "instant thread reply"}
+	reply := slack.Message{Channel: m.active, ThreadTS: m.thread.ts, User: "UBOB", TS: ts(m.now().Add(time.Second)), Text: "<@" + m.session.UserID + "> instant thread reply"}
 	applyLive(m, slack.LiveEvent{Type: "message", Message: reply})
 	if len(m.history) != before+1 || m.history[len(m.history)-1].Text != reply.Text || *calls != 1 {
 		t.Fatal("thread did not update instantly")
