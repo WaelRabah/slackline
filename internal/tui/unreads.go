@@ -224,8 +224,36 @@ func (m *Model) unreadsKey(key string) (tea.Cmd, bool) {
 		return nil, true
 	case "x":
 		return m.markBlockRead(items), true
+	case "enter":
+		return m.openUnreadBlock(items), true
 	}
 	return nil, false
+}
+
+// openUnreadBlock opens the selected block's channel at its newest message.
+func (m *Model) openUnreadBlock(items []unreadTarget) tea.Cmd {
+	if len(items) == 0 {
+		return nil
+	}
+	item := items[min(m.unreadIndex, len(items)-1)]
+	return m.openChannelAt(item.id, item.latest)
+}
+
+// openChannelAt opens a conversation and scrolls to ts once history loads.
+func (m *Model) openChannelAt(channel, ts string) tea.Cmd {
+	for i, c := range m.conversations {
+		if c.ID != channel {
+			continue
+		}
+		m.selected = i
+		m.mode = normal
+		cmd := m.openSelected()
+		m.revealMessage = ts
+		m.revealSidebarSelection()
+		return cmd
+	}
+	m.status = "That conversation is not in your sidebar"
+	return nil
 }
 
 // markBlockRead marks the shown block's channel and its threads as read in Slack.
@@ -338,6 +366,13 @@ func (m Model) unreadsView() string {
 // unreadsLayout stacks one box per unread block. It also returns the first line of
 // the selected block, so the view can scroll to it.
 func (m Model) unreadsLayout() (string, int) {
+	view, selected, _ := m.unreadsBlocks()
+	return view, selected
+}
+
+// unreadsBlocks is unreadsLayout plus each block's first and last content line,
+// which mouse clicks use to find the block under the pointer.
+func (m Model) unreadsBlocks() (string, int, [][2]int) {
 	width := max(1, m.viewport.Width())
 	muted := lipgloss.NewStyle().Foreground(m.muted())
 	bold := lipgloss.NewStyle().Bold(true)
@@ -360,19 +395,23 @@ func (m Model) unreadsLayout() (string, int) {
 	}
 	if len(items) == 0 {
 		b.WriteString("\nAll caught up. No unread messages.")
-		return ansi.Hardwrap(b.String(), width, true), 0
+		return ansi.Hardwrap(b.String(), width, true), 0, nil
 	}
 	index := min(m.unreadIndex, len(items)-1)
 	selectedLine := 0
+	var spans [][2]int
 	for i, target := range items {
 		if i == index {
 			selectedLine = strings.Count(b.String(), "\n")
 		}
 		section, ok := sections[target.id]
-		b.WriteString("\n" + m.unreadBox(target, section, ok, i == index, width) + "\n")
+		box := m.unreadBox(target, section, ok, i == index, width)
+		start := strings.Count(b.String(), "\n") + 1
+		spans = append(spans, [2]int{start, start + lipgloss.Height(box) - 1})
+		b.WriteString("\n" + box + "\n")
 	}
-	b.WriteString("\n" + muted.Render("n/p next/previous block · x mark read · s refresh"))
-	return b.String(), selectedLine
+	b.WriteString("\n" + muted.Render("n/p next/previous block · Enter or click opens · e react · x mark read · s refresh"))
+	return b.String(), selectedLine, spans
 }
 
 // unreadBox draws one block in its own box: channel and newest time on the top
