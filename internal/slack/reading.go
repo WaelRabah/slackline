@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -27,7 +28,18 @@ func (c *Client) MarkRead(ctx context.Context, channel, thread, ts string) error
 		method = "subscriptions.thread.mark"
 		params.Set("thread_ts", thread)
 	}
-	return c.call(ctx, method, params, nil)
+	err := c.call(ctx, method, params, nil)
+	if benignError(method, err) {
+		// The thread or message was deleted; there is nothing left to mark.
+		return nil
+	}
+	return err
+}
+
+// benignError reports failures that leave nothing to do. Marking a thread whose
+// root Slack no longer has is one: the position it would record is gone.
+func benignError(method string, err error) bool {
+	return err != nil && method == "subscriptions.thread.mark" && strings.Contains(err.Error(), "message_not_found")
 }
 func (c *Client) CountUnread(ctx context.Context, channel, after, through, self string) (UnreadCount, error) {
 	result := UnreadCount{}

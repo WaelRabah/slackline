@@ -60,10 +60,12 @@ func playSound(ctx context.Context, path string) tea.Cmd {
 		soundCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 		defer cancel()
 		err := exec.CommandContext(soundCtx, "/usr/bin/afplay", path).Run()
-		if err != nil && ctx.Err() == nil {
+		// Our own 3s limit ends long clips; only real playback failures count.
+		cutShort := soundCtx.Err() != nil
+		if err != nil && ctx.Err() == nil && !cutShort {
 			logs.Error("sound", fmt.Errorf("afplay %s: %w", path, err))
 		}
-		return soundDoneMsg{fallback: err != nil && ctx.Err() == nil}
+		return soundDoneMsg{fallback: err != nil && ctx.Err() == nil && !cutShort}
 	}
 }
 

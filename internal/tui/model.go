@@ -112,6 +112,7 @@ type Model struct {
 	mutedRequested    time.Time
 	bgQueue           []bgJob
 	bgActive          map[string]bool
+	bgRetryAt         map[string]time.Time
 	bgRunning         int
 	unreadPending     int
 	unreadOK          bool

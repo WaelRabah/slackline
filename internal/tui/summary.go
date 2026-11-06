@@ -55,7 +55,7 @@ func (m *Model) summarizeConversation() tea.Cmd {
 // autoSummary runs for the open conversation when it has no summary yet or a
 // message arrived after the stored summary. Otherwise it does nothing.
 func (m *Model) autoSummary(channel string) tea.Cmd {
-	if channel == "" || m.demo || !m.provider.Ready() || m.summaryBusy[channel] || !m.summaryStale(channel) {
+	if channel == "" || m.demo || !m.provider.Ready() || m.summaryBusy[channel] || !m.summaryStale(channel) || m.inBackoff(bgSummary, channel) {
 		return nil
 	}
 	return m.queueSummary(channel)

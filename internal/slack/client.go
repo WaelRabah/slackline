@@ -36,7 +36,7 @@ func NewClient(creds Credentials) *Client {
 
 func (c *Client) call(ctx context.Context, method string, params url.Values, out any) (err error) {
 	defer func() {
-		if err != nil {
+		if err != nil && !benignError(method, err) {
 			logs.Error("slack", fmt.Errorf("%s: %w", method, err))
 		}
 	}()

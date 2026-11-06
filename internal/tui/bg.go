@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/WaelRabah/slackline/internal/logs"
 	"sort"
@@ -20,7 +21,27 @@ const (
 	bgWorkers        = 3
 	bgSummaryTimeout = 5 * time.Minute
 	bgUnreadTimeout  = 4 * time.Minute
+	// A failed job is not retried automatically until this passes, so a provider
+	// outage or Slack rate limit cannot turn every refresh into another request.
+	bgFailureBackoff = 10 * time.Minute
+	bgMinRateBackoff = time.Minute
 )
+
+// backoffFor returns how long automatic runs wait after err. Slack asks for a
+// specific delay on rate limits; everything else waits the standard interval.
+func backoffFor(err error) time.Duration {
+	var limited *slack.RateLimitError
+	if errors.As(err, &limited) {
+		return max(limited.RetryAfter, bgMinRateBackoff)
+	}
+	return bgFailureBackoff
+}
+
+// inBackoff reports whether automatic runs must skip this job after a recent failure.
+// Manual requests (the s key) ignore it.
+func (m Model) inBackoff(kind bgKind, channel string) bool {
+	return time.Now().Before(m.bgRetryAt[jobKey(kind, channel)])
+}
 
 type bgKind int
 
@@ -192,6 +213,16 @@ func categorizeChannel(ctx context.Context, api slack.UnreadsAPI, provider infer
 func (m *Model) applyBG(res bgResult) tea.Cmd {
 	m.bgRunning = max(0, m.bgRunning-1)
 	delete(m.bgActive, jobKey(res.job.kind, res.job.channel))
+	if res.err != nil || (res.job.kind == bgUnread && res.section.err != "") {
+		if m.bgRetryAt == nil {
+			m.bgRetryAt = map[string]time.Time{}
+		}
+		wait := bgFailureBackoff
+		if res.err != nil {
+			wait = backoffFor(res.err)
+		}
+		m.bgRetryAt[jobKey(res.job.kind, res.job.channel)] = time.Now().Add(wait)
+	}
 	var done tea.Cmd
 	switch res.job.kind {
 	case bgSummary:
@@ -335,15 +366,15 @@ func (m *Model) backgroundRefresh() tea.Cmd {
 	unread, queued := 0, 0
 	for _, target := range m.unreadItems() {
 		m.latestSeen[target.id] = laterTS(m.latestSeen[target.id], target.latest)
-		if !m.blockCurrent(target) && m.enqueue(m.unreadJob(target, sig)) {
+		if !m.blockCurrent(target) && !m.inBackoff(bgUnread, target.id) && m.enqueue(m.unreadJob(target, sig)) {
 			unread++
 		}
-		if m.summaryStale(target.id) && m.enqueue(m.summaryJob(target.id)) {
+		if m.summaryStale(target.id) && !m.inBackoff(bgSummary, target.id) && m.enqueue(m.summaryJob(target.id)) {
 			queued++
 		}
 	}
 	for channel := range m.summaries {
-		if m.summaryStale(channel) && m.enqueue(m.summaryJob(channel)) {
+		if m.summaryStale(channel) && !m.inBackoff(bgSummary, channel) && m.enqueue(m.summaryJob(channel)) {
 			queued++
 		}
 	}
