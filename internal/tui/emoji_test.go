@@ -17,14 +17,21 @@ func TestEmojiTextPreservesCodeLinksAndUnknownNames(t *testing.T) {
 	for _, test := range [][2]string{
 		{"Hi :wave: :+1::skin-tone-3: :flag-us: :again:", "Hi 👋 👍🏼 🇺🇸 🚀"},
 		{":female-technologist::skin-tone-4:", "👩🏽‍💻"},
-		{"`:smile:` ```\n:rocket:\n``` :tada:", "`:smile:` ```\n:rocket:\n``` 🎉"},
-		{"`:smile: :wave:", "`:smile: :wave:"},
-		{"<https://example.test/:smile:|:wave:> https://example.test/:rocket:", "<https://example.test/:smile:|:wave:> https://example.test/:rocket:"},
+		{"`:smile:`\n```go\n:rocket:\n```\n:tada:", ":smile:\n :rocket: \n🎉"},
+		{"<https://example.test/:smile:|:wave:> https://example.test/:rocket:", "👋 https://example.test/:rocket:"},
 		{":unknown: :parrot: :a: already 🙂", ":unknown: :parrot: :a: already 🙂"},
 	} {
-		if got := m.messageText(test[0]); got != test[1] {
+		if got := ansi.Strip(m.messageText(test[0])); got != test[1] {
 			t.Errorf("%q: got %q, want %q", test[0], got, test[1])
 		}
+	}
+	link := m.messageText("<https://example.test/:smile:|:wave:>")
+	if !strings.Contains(link, "\x1b]8;;https://example.test/:smile:\x1b\\") || !strings.Contains(link, "👋") {
+		t.Errorf("labelled link lost its target or emoji label: %q", link)
+	}
+	code := m.messageText("```\nhttps://example.test/:rocket:\n```")
+	if strings.Contains(code, "\x1b]8;;") || strings.Contains(code, "🚀") {
+		t.Errorf("code block contents were transformed: %q", code)
 	}
 }
 

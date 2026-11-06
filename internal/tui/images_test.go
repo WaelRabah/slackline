@@ -13,6 +13,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/WaelRabah/slackline/internal/slack"
+	"github.com/charmbracelet/x/ansi"
 )
 
 type imageFixture struct {
@@ -101,7 +102,7 @@ func TestOffscreenImagesAndCacheAreBounded(t *testing.T) {
 	}
 	for i := range imageCacheLimit + 10 {
 		source := m.history[0]
-		source.Files[0].URLPrivate = string(rune('a' + i))
+		source.Files[0].URLPrivate = "https://files.slack.com/" + strconv.Itoa(i) + ".png"
 		m.history = []slack.Message{source}
 		m.viewport.SetHeight(20)
 		m.renderHistory()
@@ -170,5 +171,107 @@ func TestImageFailureKeepsReservedBlockHeight(t *testing.T) {
 		if before != after {
 			t.Fatalf("failed image moved message blocks: width=%d before=%d after=%d", width, before, after)
 		}
+	}
+}
+
+func TestCustomEmojiStripIsCompactAndSideBySide(t *testing.T) {
+	m := imageModel(t)
+	m.emojis = map[string]string{
+		"parrot": "https://emoji.slack-edge.com/parrot.png",
+		"shipit": "https://emoji.slack-edge.com/shipit.png",
+	}
+	message := m.history[0]
+	message.Text = ":parrot: :shipit: :wave:"
+	message.Files = nil
+	message.Blocks = nil
+	m.history = []slack.Message{message}
+	m.selectedMessage = message.TS
+	m.images = map[string]*imageEntry{}
+	for _, ref := range m.messageImages(message) {
+		m.images[ref.url] = &imageEntry{image: image.NewNRGBA(image.Rect(0, 0, 8, 8)), used: 1}
+	}
+	block := m.messageBlock(message, 80)
+	plain := ansi.Strip(block)
+	var previewLines []string
+	for _, line := range strings.Split(plain, "\n") {
+		if strings.Contains(line, "▀") {
+			previewLines = append(previewLines, line)
+		}
+	}
+	if len(previewLines) != emojiCellRows {
+		t.Fatalf("custom emoji strip used %d rows, want %d", len(previewLines), emojiCellRows)
+	}
+	if strings.Count(previewLines[0], "▀") != 2*emojiCellColumns {
+		t.Fatalf("custom emoji were not laid out side by side: %q", previewLines[0])
+	}
+	if !strings.Contains(plain, ":parrot: :shipit: 👋") {
+		t.Fatalf("custom emoji shortcodes should stay readable in text: %q", plain)
+	}
+}
+
+func TestMediaCardsLinkFilesAndUnfurlsWithoutFakePreviews(t *testing.T) {
+	m := ready(t)
+	message := slack.Message{
+		TS: "200.000002", User: "U1", Text: "Files and links",
+		Files: []slack.File{
+			{ID: "F1", Title: "Demo clip", Mimetype: "video/mp4", Size: 5 << 20, Permalink: "https://workspace.slack.com/files/F1", URLPrivate: "https://files.slack.com/clip.mp4"},
+			{ID: "F2", Title: "Spec", Mimetype: "application/pdf", Filetype: "pdf", Size: 2048, Permalink: "https://workspace.slack.com/files/F2"},
+			{ID: "F3", Title: "Giphy", Mimetype: "image/gif", URLPrivate: "https://media.giphy.com/x.gif", Permalink: "https://workspace.slack.com/files/F3"},
+		},
+		Attachments: []slack.Attachment{{
+			Title: "A video", ProviderName: "YouTube",
+			FromURL: "https://youtube.com/watch?v=1", VideoURL: "https://youtube.com/watch?v=1",
+			ImageURL: "https://i.ytimg.com/vi/1/hq.jpg",
+		}},
+		Blocks: []slack.ImageBlock{{
+			Type: "video", AltText: "Product demo",
+			ThumbnailURL: "https://cdn.example.test/thumb.png", VideoURL: "https://example.test/video",
+		}},
+	}
+	if refs := m.messageImages(message); len(refs) != 0 {
+		t.Fatalf("external or non-image media became preview downloads: %+v", refs)
+	}
+	block := m.messageBlock(message, 80)
+	plain := ansi.Strip(block)
+	for _, want := range []string{"▶ Demo clip", "Video · 5.0 MB", "▤ Spec", "PDF · 2.0 KB", "▤ Giphy", "Image", "▶ A video", "Video · YouTube", "▶ Product demo"} {
+		if !strings.Contains(plain, want) {
+			t.Errorf("media card missing %q in:\n%s", want, plain)
+		}
+	}
+	for _, link := range []string{"https://workspace.slack.com/files/F1", "https://workspace.slack.com/files/F2", "https://youtube.com/watch?v=1", "https://example.test/video"} {
+		if !strings.Contains(block, "\x1b]8;;"+link+"\x1b\\") {
+			t.Errorf("media card is missing clickable link %q", link)
+		}
+	}
+	if strings.Contains(plain, "Preview unavailable") {
+		t.Fatal("unsupported media rendered an error block instead of a card")
+	}
+	for _, line := range strings.Split(block, "\n") {
+		if lipgloss.Width(line) != 80 {
+			t.Fatalf("media card escaped the message frame: %q", line)
+		}
+	}
+}
+
+func TestVideoThumbnailPreviewIsLabeledAndLinked(t *testing.T) {
+	m := ready(t)
+	message := slack.Message{
+		TS: "200.000003", User: "U1", Text: "Launch clip",
+		Files: []slack.File{{
+			ID: "F4", Title: "Launch", Mimetype: "video/mp4", Size: 2 << 20,
+			Thumb360: "https://files.slack.com/thumb.png", URLPrivate: "https://files.slack.com/clip.mp4",
+			Permalink: "https://workspace.slack.com/files/F4",
+		}},
+	}
+	refs := m.messageImages(message)
+	if len(refs) != 1 || refs[0].url != "https://files.slack.com/thumb.png" || !strings.HasPrefix(refs[0].label, "▶ Launch · Video · 2.0 MB") {
+		t.Fatalf("video thumbnail was not selected with media metadata: %+v", refs)
+	}
+	block := m.messageBlock(message, 80)
+	if !strings.Contains(block, "\x1b]8;;https://workspace.slack.com/files/F4\x1b\\") {
+		t.Fatal("video preview caption is not clickable")
+	}
+	if strings.Contains(block, "clip.mp4") {
+		t.Fatal("video URL was treated as a still image")
 	}
 }

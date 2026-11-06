@@ -18,8 +18,8 @@ import (
 const imageCacheLimit = 24
 
 type imageRef struct {
-	url, label string
-	emoji      bool
+	url, label, link string
+	emoji            bool
 }
 type imageEntry struct {
 	image         image.Image
@@ -130,7 +130,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.imageIndex = 0
 			cmd = m.inlineImageCmd()
 		} else {
-			m.status = "No images in this message"
+			m.status = "No previewable media in this message"
 		}
 	} else {
 		if key, ok := msg.(tea.KeyPressMsg); ok && m.mode == normal && key.String() == "R" {
@@ -167,22 +167,26 @@ func (m Model) customEmojiURL(name string) string {
 func (m Model) messageImages(message slack.Message) []imageRef {
 	var refs []imageRef
 	seen := map[string]bool{}
-	add := func(raw, label string, emoji bool) {
-		if raw != "" && !seen[raw] && len(refs) < 8 {
-			seen[raw] = true
-			refs = append(refs, imageRef{raw, cleanLine(label), emoji})
+	add := func(raw, label, link string, emoji bool) {
+		if raw == "" || seen[raw] || len(refs) >= 8 || !slack.Previewable(raw) {
+			return
 		}
+		if label = cleanLine(label); label == "" {
+			label = "Image"
+		}
+		seen[raw] = true
+		refs = append(refs, imageRef{url: raw, label: label, link: link, emoji: emoji})
 	}
 	for _, file := range message.Files {
-		if strings.HasPrefix(file.Mimetype, "image/") {
-			label := file.Title
-			if label == "" {
-				label = file.Name
-			}
-			if label == "" {
-				label = "Image"
-			}
-			add(file.PreviewURL(), label, false)
+		link := file.Permalink
+		if link == "" {
+			link = file.URLPrivate
+		}
+		switch {
+		case file.IsImage():
+			add(file.PreviewURL(), fileTitle(file), link, false)
+		case file.IsVideo():
+			add(file.PreviewURL(), "▶ "+fileTitle(file)+" · "+fileMeta(file), link, false)
 		}
 	}
 	for _, attachment := range message.Attachments {
@@ -190,14 +194,11 @@ func (m Model) messageImages(message slack.Message) []imageRef {
 		if raw == "" {
 			raw = attachment.ThumbURL
 		}
-		label := attachment.Title
-		if label == "" {
-			label = attachment.Fallback
+		label := attachmentTitle(attachment)
+		if attachment.VideoURL != "" {
+			label = "▶ " + label
 		}
-		if label == "" {
-			label = "Image attachment"
-		}
-		add(raw, label, false)
+		add(raw, label, attachment.LinkURL(), false)
 	}
 	var blocks func([]slack.ImageBlock, int)
 	blocks = func(items []slack.ImageBlock, depth int) {
@@ -205,8 +206,15 @@ func (m Model) messageImages(message slack.Message) []imageRef {
 			return
 		}
 		for _, block := range items {
-			if block.Type == "image" {
-				add(block.ImageURL, block.AltText, false)
+			switch block.Type {
+			case "image":
+				add(block.ImageURL, block.AltText, "", false)
+			case "video":
+				label := block.AltText
+				if label == "" {
+					label = "Video"
+				}
+				add(block.ThumbnailURL, "▶ "+label+" · Video", block.VideoURL, false)
 			}
 			if block.Accessory != nil {
 				blocks([]slack.ImageBlock{*block.Accessory}, depth+1)
@@ -218,12 +226,12 @@ func (m Model) messageImages(message slack.Message) []imageRef {
 	for _, token := range emojiToken.FindAllString(message.Text, 32) {
 		if token[0] == ':' {
 			name := token[1 : len(token)-1]
-			add(m.customEmojiURL(name), ":"+name+":", true)
+			add(m.customEmojiURL(name), ":"+name+":", "", true)
 		}
 	}
 	for _, reaction := range message.Reactions {
 		if reaction.Count > 0 {
-			add(m.customEmojiURL(reaction.Name), ":"+reaction.Name+":", true)
+			add(m.customEmojiURL(reaction.Name), ":"+reaction.Name+":", "", true)
 		}
 	}
 	return refs
@@ -330,19 +338,306 @@ func (m Model) renderImage(ref imageRef, columns, rows int) string {
 	}
 	return entry.rendered
 }
-func (m Model) imageBlocks(message slack.Message, width int) string {
+
+const (
+	imagePreviewRows = 10
+	emojiCellColumns = 6
+	emojiCellRows    = 3
+)
+
+func (m Model) mediaBlocks(message slack.Message, width int) string {
 	var out strings.Builder
+	var emoji []imageRef
 	for _, ref := range m.messageImages(message) {
-		rows := 20
 		if ref.emoji {
-			rows = 2
+			emoji = append(emoji, ref)
+			continue
 		}
-		out.WriteString("\n\n" + ansi.Hardwrap("▧ "+ref.label, width, true) + "\n")
-		preview := m.renderImage(ref, min(width, 100), rows)
+		out.WriteString("\n\n" + m.mediaLabel(ref, width) + "\n")
+		preview := m.renderImage(ref, min(width, 64), imagePreviewRows)
 		// Reserve rows while loading so downloads do not move the selected block.
-		out.WriteString(lipgloss.NewStyle().Height(rows).MaxHeight(rows).Render(preview))
+		out.WriteString(lipgloss.NewStyle().Height(imagePreviewRows).MaxHeight(imagePreviewRows).Render(preview))
+	}
+	if len(emoji) > 0 {
+		out.WriteString("\n\n" + m.emojiStrip(emoji, width))
+	}
+	if cards := m.mediaCards(message, width); cards != "" {
+		out.WriteString("\n\n" + cards)
 	}
 	return out.String()
+}
+
+// mediaLabel makes the caption of a file preview clickable without moving the
+// preview out of the message block.
+func (m Model) mediaLabel(ref imageRef, width int) string {
+	label := ansi.Hardwrap("▧ "+ref.label, width, true)
+	safe, ok := safeLink(ref.link)
+	if !ok {
+		return label
+	}
+	lines := strings.Split(label, "\n")
+	for i := range lines {
+		lines[i] = m.linkText(safe, lines[i])
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (m Model) emojiStrip(refs []imageRef, width int) string {
+	columns := min(emojiCellColumns, max(1, width))
+	var rows []string
+	var current []string
+	currentWidth := 0
+	flush := func() {
+		if len(current) == 0 {
+			return
+		}
+		rows = append(rows, joinSideBySide(current, " "))
+		current = nil
+		currentWidth = 0
+	}
+	for _, ref := range refs {
+		if currentWidth > 0 && currentWidth+1+columns > width {
+			flush()
+		}
+		if currentWidth > 0 {
+			currentWidth++
+		}
+		current = append(current, m.renderEmoji(ref, columns))
+		currentWidth += columns
+	}
+	flush()
+	return strings.Join(rows, "\n")
+}
+
+func joinSideBySide(blocks []string, gap string) string {
+	split := make([][]string, len(blocks))
+	height := 0
+	for i, block := range blocks {
+		split[i] = strings.Split(block, "\n")
+		height = max(height, len(split[i]))
+	}
+	lines := make([]string, height)
+	for row := range height {
+		var line strings.Builder
+		for column, block := range split {
+			if column > 0 {
+				line.WriteString(gap)
+			}
+			if row < len(block) {
+				line.WriteString(block[row])
+			}
+		}
+		lines[row] = line.String()
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (m Model) renderEmoji(ref imageRef, columns int) string {
+	entry := m.images[ref.url]
+	if entry == nil || entry.image == nil {
+		return padCell(lipgloss.NewStyle().Foreground(m.muted()).Render("▧"), columns, emojiCellRows)
+	}
+	return padCell(m.renderImage(ref, columns, emojiCellRows), columns, emojiCellRows)
+}
+
+func padCell(content string, columns, rows int) string {
+	lines := strings.Split(content, "\n")
+	cells := make([]string, rows)
+	for row := range rows {
+		line := ""
+		if row < len(lines) {
+			line = ansi.Truncate(lines[row], columns, "")
+		}
+		cells[row] = line + strings.Repeat(" ", max(0, columns-ansi.StringWidth(line)))
+	}
+	return strings.Join(cells, "\n")
+}
+
+type mediaCard struct {
+	icon, title, meta, url string
+}
+
+func (m Model) mediaCards(message slack.Message, width int) string {
+	var cards []mediaCard
+	seen := map[string]bool{}
+	add := func(card mediaCard) {
+		card.title = cleanLine(card.title)
+		if card.title == "" {
+			card.title = "Media"
+		}
+		card.meta = cleanLine(card.meta)
+		key := card.url + "\x00" + card.title
+		if seen[key] || len(cards) >= 8 {
+			return
+		}
+		seen[key] = true
+		cards = append(cards, card)
+	}
+	for _, file := range message.Files {
+		if slack.Previewable(file.PreviewURL()) {
+			continue
+		}
+		link := file.Permalink
+		if link == "" {
+			link = file.URLPrivate
+		}
+		icon := "▤"
+		switch {
+		case file.IsVideo():
+			icon = "▶"
+		case file.IsAudio():
+			icon = "♪"
+		}
+		add(mediaCard{icon: icon, title: fileTitle(file), meta: fileMeta(file), url: link})
+	}
+	for _, attachment := range message.Attachments {
+		raw := attachment.ImageURL
+		if raw == "" {
+			raw = attachment.ThumbURL
+		}
+		if slack.Previewable(raw) {
+			continue
+		}
+		link := attachment.LinkURL()
+		if link == "" {
+			link = raw
+		}
+		card := mediaCard{icon: "↗", title: attachmentTitle(attachment), url: link}
+		if attachment.VideoURL != "" {
+			card.icon = "▶"
+			card.meta = "Video"
+		}
+		if provider := attachment.ProviderName; provider != "" {
+			card.meta = strings.TrimSpace(card.meta + " · " + provider)
+		} else if service := attachment.ServiceName; service != "" {
+			card.meta = strings.TrimSpace(card.meta + " · " + service)
+		}
+		if card.meta == "" {
+			card.meta = "Link"
+		}
+		add(card)
+	}
+	var filtered []slack.ImageBlock
+	var blocks func([]slack.ImageBlock, int)
+	blocks = func(items []slack.ImageBlock, depth int) {
+		if depth > 6 {
+			return
+		}
+		for _, block := range items {
+			if block.Type == "image" && block.ImageURL != "" && !slack.Previewable(block.ImageURL) {
+				filtered = append(filtered, block)
+			}
+			if block.Type == "video" && !slack.Previewable(block.ThumbnailURL) {
+				filtered = append(filtered, block)
+			}
+			if block.Accessory != nil {
+				blocks([]slack.ImageBlock{*block.Accessory}, depth+1)
+			}
+			blocks(block.Elements, depth+1)
+		}
+	}
+	blocks(message.Blocks, 0)
+	for _, block := range filtered {
+		label := block.AltText
+		card := mediaCard{icon: "▧", title: label, meta: "Image", url: block.ImageURL}
+		if block.Type == "video" {
+			if label == "" {
+				label = "Video"
+			}
+			card = mediaCard{icon: "▶", title: label, meta: "Video", url: block.VideoURL}
+			if card.url == "" {
+				card.url = block.ThumbnailURL
+			}
+		}
+		if label == "" {
+			label = "Image"
+		}
+		card.title = label
+		add(card)
+	}
+	rendered := make([]string, 0, len(cards))
+	for _, card := range cards {
+		rendered = append(rendered, m.renderMediaCard(card, width))
+	}
+	return strings.Join(rendered, "\n")
+}
+
+func (m Model) renderMediaCard(card mediaCard, width int) string {
+	lines := strings.Split(ansi.Hardwrap(card.icon+" "+card.title, width, true), "\n")
+	if safe, ok := safeLink(card.url); ok {
+		for i := range lines {
+			lines[i] = m.linkText(safe, lines[i])
+		}
+	}
+	body := strings.Join(lines, "\n")
+	if card.meta != "" {
+		body += "\n" + lipgloss.NewStyle().Foreground(m.muted()).Render(ansi.Hardwrap(card.meta, width, true))
+	}
+	return body
+}
+
+func fileTitle(file slack.File) string {
+	for _, value := range []string{file.Title, file.Name, file.ID} {
+		if strings.TrimSpace(value) != "" {
+			return cleanLine(value)
+		}
+	}
+	return "File"
+}
+
+func fileMeta(file slack.File) string {
+	parts := []string{fileKind(file)}
+	if size := humanSize(file.Size); size != "" {
+		parts = append(parts, size)
+	}
+	return strings.Join(parts, " · ")
+}
+
+func fileKind(file slack.File) string {
+	switch {
+	case file.IsVideo():
+		return "Video"
+	case file.IsAudio():
+		return "Audio"
+	case file.IsImage():
+		return "Image"
+	}
+	if file.Filetype != "" {
+		return strings.ToUpper(file.Filetype)
+	}
+	if _, subtype, ok := strings.Cut(file.Mimetype, "/"); ok && subtype != "" {
+		return strings.ToUpper(subtype)
+	}
+	return "File"
+}
+
+func attachmentTitle(attachment slack.Attachment) string {
+	for _, value := range []string{attachment.Title, attachment.ProviderName, attachment.ServiceName, attachment.Fallback} {
+		if strings.TrimSpace(value) != "" {
+			return cleanLine(value)
+		}
+	}
+	if link := attachment.LinkURL(); link != "" {
+		return cleanLine(link)
+	}
+	return "Link"
+}
+
+func humanSize(size int64) string {
+	if size <= 0 {
+		return ""
+	}
+	units := []string{"B", "KB", "MB", "GB", "TB"}
+	value := float64(size)
+	unit := 0
+	for value >= 1024 && unit < len(units)-1 {
+		value /= 1024
+		unit++
+	}
+	if unit == 0 {
+		return fmt.Sprintf("%d B", size)
+	}
+	return fmt.Sprintf("%.1f %s", value, units[unit])
 }
 func (m Model) imageView() string {
 	if len(m.viewer) == 0 {

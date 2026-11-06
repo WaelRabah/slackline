@@ -9,7 +9,9 @@ import (
 
 type sidebarGroup struct {
 	id, title string
-	indices   []int
+	indices   []int // conversations listed under this heading
+	// members is every conversation that belongs to the section, including ones shown under Unread.
+	members []int
 }
 type sidebarRow struct {
 	label, group string
@@ -25,6 +27,7 @@ func (m Model) sidebarGroups() []sidebarGroup {
 		}
 	}
 	used := map[int]bool{}
+	claimed := map[int]bool{}
 	groups := []sidebarGroup{}
 	unread := sidebarGroup{id: "local-unread", title: "Unread"}
 	for i, c := range m.conversations {
@@ -89,7 +92,13 @@ func (m Model) sidebarGroups() []sidebarGroup {
 		}
 		g := sidebarGroup{id: s.ID, title: title}
 		for _, id := range s.Page.Channels {
-			if i, ok := byID[id]; ok && !used[i] {
+			i, ok := byID[id]
+			if !ok || claimed[i] {
+				continue
+			}
+			claimed[i] = true
+			g.members = append(g.members, i)
+			if !used[i] {
 				g.indices = append(g.indices, i)
 				used[i] = true
 			}
@@ -100,7 +109,7 @@ func (m Model) sidebarGroups() []sidebarGroup {
 	}
 	fallback := []sidebarGroup{{id: "local-channels", title: "Channels"}, {id: "local-private", title: "Private channels"}, {id: "local-dms", title: "Direct messages"}, {id: "local-group-dms", title: "Group DMs"}}
 	for i, c := range m.conversations {
-		if used[i] || !m.visibleConversation(c.ID) {
+		if claimed[i] || !m.visibleConversation(c.ID) {
 			continue
 		}
 		group := 0
@@ -112,7 +121,10 @@ func (m Model) sidebarGroups() []sidebarGroup {
 		case c.IsPrivate:
 			group = 1
 		}
-		fallback[group].indices = append(fallback[group].indices, i)
+		fallback[group].members = append(fallback[group].members, i)
+		if !used[i] {
+			fallback[group].indices = append(fallback[group].indices, i)
+		}
 	}
 	for _, g := range fallback {
 		if len(g.indices) > 0 {
@@ -137,6 +149,26 @@ func (m Model) sidebarRows() []sidebarRow {
 		}
 	}
 	return rows
+}
+
+// groupUnread sums unread messages across a section's conversations; exact is false if any count is a lower bound.
+func (m Model) groupUnread(group string) (total int, exact, any bool) {
+	exact = true
+	for _, g := range m.sidebarGroups() {
+		if g.id != group {
+			continue
+		}
+		for _, i := range g.members {
+			u, ok := m.unread[m.conversations[i].ID]
+			if !ok {
+				continue
+			}
+			any = true
+			total += max(1, u.count)
+			exact = exact && u.exact
+		}
+	}
+	return total, exact, any
 }
 func (m Model) indexInGroup(index int, id string) bool {
 	for _, g := range m.sidebarGroups() {

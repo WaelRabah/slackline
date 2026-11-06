@@ -17,13 +17,63 @@ type File struct {
 	Name       string `json:"name"`
 	Title      string `json:"title"`
 	Mimetype   string `json:"mimetype"`
+	Filetype   string `json:"filetype"`
+	Permalink  string `json:"permalink"`
 	URLPrivate string `json:"url_private"`
 	Thumb360   string `json:"thumb_360"`
 	Thumb720   string `json:"thumb_720"`
+	ThumbVideo string `json:"thumb_video"`
+	Size       int64  `json:"size"`
 }
 
+func (f File) IsImage() bool {
+	return strings.HasPrefix(f.Mimetype, "image/") || imageFiletypes[f.Filetype]
+}
+
+func (f File) IsVideo() bool {
+	return strings.HasPrefix(f.Mimetype, "video/") || videoFiletypes[f.Filetype]
+}
+
+func (f File) IsAudio() bool {
+	return strings.HasPrefix(f.Mimetype, "audio/") || audioFiletypes[f.Filetype]
+}
+
+var (
+	imageFiletypes = map[string]bool{"png": true, "jpg": true, "jpeg": true, "gif": true, "webp": true, "heic": true}
+	videoFiletypes = map[string]bool{"mp4": true, "mov": true, "webm": true, "mkv": true, "m4v": true}
+	audioFiletypes = map[string]bool{"mp3": true, "m4a": true, "wav": true, "ogg": true, "flac": true}
+)
+
+// PreviewURL never returns a video's URLPrivate: only still images can be
+// decoded by the preview pipeline.
 func (f File) PreviewURL() string {
-	for _, value := range []string{f.Thumb360, f.Thumb720, f.URLPrivate} {
+	for _, value := range []string{f.Thumb360, f.Thumb720, f.ThumbVideo} {
+		if value != "" {
+			return value
+		}
+	}
+	if f.IsImage() {
+		return f.URLPrivate
+	}
+	return ""
+}
+
+type Attachment struct {
+	Title        string `json:"title"`
+	Pretext      string `json:"pretext"`
+	Text         string `json:"text"`
+	Fallback     string `json:"fallback"`
+	ImageURL     string `json:"image_url"`
+	ThumbURL     string `json:"thumb_url"`
+	FromURL      string `json:"from_url"`
+	OriginalURL  string `json:"original_url"`
+	VideoURL     string `json:"video_url"`
+	ProviderName string `json:"provider_name"`
+	ServiceName  string `json:"service_name"`
+}
+
+func (a Attachment) LinkURL() string {
+	for _, value := range []string{a.OriginalURL, a.FromURL} {
 		if value != "" {
 			return value
 		}
@@ -31,21 +81,15 @@ func (f File) PreviewURL() string {
 	return ""
 }
 
-type Attachment struct {
-	Title    string `json:"title"`
-	Pretext  string `json:"pretext"`
-	Text     string `json:"text"`
-	Fallback string `json:"fallback"`
-	ImageURL string `json:"image_url"`
-	ThumbURL string `json:"thumb_url"`
-}
 type ImageBlock struct {
-	Type      string          `json:"type"`
-	ImageURL  string          `json:"image_url"`
-	AltText   string          `json:"alt_text"`
-	Text      json.RawMessage `json:"text"`
-	Accessory *ImageBlock     `json:"accessory"`
-	Elements  []ImageBlock    `json:"elements"`
+	Type         string          `json:"type"`
+	ImageURL     string          `json:"image_url"`
+	ThumbnailURL string          `json:"thumbnail_url"`
+	VideoURL     string          `json:"video_url"`
+	AltText      string          `json:"alt_text"`
+	Text         json.RawMessage `json:"text"`
+	Accessory    *ImageBlock     `json:"accessory"`
+	Elements     []ImageBlock    `json:"elements"`
 }
 
 type ImageAPI interface {
@@ -66,6 +110,16 @@ func imageHost(raw string) (private bool, valid bool) {
 		return false, true
 	}
 	return false, false
+}
+
+// Previewable reports whether Image can fetch raw. External thumbnails (for
+// example YouTube unfurls) are rendered as links instead of error blocks.
+func Previewable(raw string) bool {
+	if raw == "demo://landscape" {
+		return true
+	}
+	_, valid := imageHost(raw)
+	return valid
 }
 func (c *Client) Image(ctx context.Context, raw string) ([]byte, error) {
 	client := *c.http

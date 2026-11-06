@@ -86,3 +86,39 @@ func TestImageSizeAndErrorsAreBoundedAndRedacted(t *testing.T) {
 		t.Fatal("preview error leaked credentials")
 	}
 }
+
+func TestFilePreviewSelectionKindsAndHosts(t *testing.T) {
+	image := File{ID: "F1", Mimetype: "image/png", URLPrivate: "https://files.slack.com/a.png"}
+	if !image.IsImage() || image.PreviewURL() != image.URLPrivate {
+		t.Fatal("image file did not become a preview")
+	}
+	video := File{ID: "F2", Mimetype: "video/mp4", URLPrivate: "https://files.slack.com/a.mp4"}
+	if !video.IsVideo() || video.PreviewURL() != "" {
+		t.Fatal("video without a thumbnail was offered to the image decoder")
+	}
+	video.Thumb360 = "https://files.slack.com/a-thumb.png"
+	if video.PreviewURL() != video.Thumb360 {
+		t.Fatal("video thumbnail was not preferred")
+	}
+	if !(File{Filetype: "png"}).IsImage() || !(File{Filetype: "mp3"}).IsAudio() {
+		t.Fatal("filetype fallbacks did not detect media")
+	}
+	attachment := Attachment{ImageURL: "https://files.slack.com/b.png", FromURL: "https://example.test/page", OriginalURL: "https://example.test/original"}
+	if attachment.LinkURL() != attachment.OriginalURL {
+		t.Fatal("attachment link did not prefer the original URL")
+	}
+	for raw, want := range map[string]bool{
+		"https://files.slack.com/a.png":      true,
+		"https://files-origin.slack.com/a":   true,
+		"https://emoji.slack-edge.com/a.png": true,
+		"https://i.ytimg.com/vi/1/hq.jpg":    false,
+		"http://files.slack.com/a.png":       false,
+		"https://files.slack.com.evil/a.png": false,
+		"https://files.slack.com:8443/a.png": false,
+		"demo://landscape":                   true,
+	} {
+		if got := Previewable(raw); got != want {
+			t.Errorf("Previewable(%q) = %v, want %v", raw, got, want)
+		}
+	}
+}

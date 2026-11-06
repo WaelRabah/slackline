@@ -55,7 +55,7 @@ func (m *Model) summarizeConversation() tea.Cmd {
 // autoSummary runs for the open conversation when it has no summary yet or a
 // message arrived after the stored summary. Otherwise it does nothing.
 func (m *Model) autoSummary(channel string) tea.Cmd {
-	if channel == "" || m.demo || !m.provider.Ready() || m.summaryBusy[channel] || !m.summaryStale(channel) {
+	if channel == "" || m.demo || !m.provider.Ready() || m.summaryBusy[channel] || !m.summaryStale(channel) || m.inBackoff(bgSummary, channel) {
 		return nil
 	}
 	return m.queueSummary(channel)
@@ -137,7 +137,7 @@ func messageSourceURL(team, channel, ts string) string {
 }
 
 func (m Model) summaryHeight() int {
-	if m.active == "" || m.destination != "" || m.thread != nil {
+	if m.active == "" || m.destination != "" || m.thread != nil || m.summaryHidden {
 		return 0
 	}
 	if _, ok := m.summaries[m.active]; !ok && !m.summaryBusy[m.active] {
@@ -145,12 +145,39 @@ func (m Model) summaryHeight() int {
 	}
 	return min(10, max(0, m.mainHeight()/2))
 }
+
+// summaryText returns the active conversation's summary, or the placeholder while it is generating.
+func (m Model) summaryText() string {
+	if summary, ok := m.summaries[m.active]; ok {
+		return summary.Text
+	}
+	return "Gathering the last 14 days and generating a summary…"
+}
+
+// summaryLines renders the summary as styled, word-wrapped lines for the given inner width.
+// Slack-style single `*` emphasis is what the renderer understands, so model `**` is folded first.
+func (m Model) summaryLines(width int) []string {
+	text := strings.ReplaceAll(clean(m.summaryText()), "**", "*")
+	return strings.Split(ansi.Wrap(m.renderMarkdown(text), max(1, width), ""), "\n")
+}
+
+// summaryOffset clamps a card scroll position to the valid range for total lines and visible rows.
+func summaryOffset(total, limit, offset int) int {
+	return min(max(0, offset), max(0, total-limit))
+}
+
+// summaryPosition is the card scroll offset for the active conversation; each conversation starts at the top.
+func (m Model) summaryPosition() int {
+	if m.summaryScrollFor != m.active {
+		return 0
+	}
+	return m.summaryScroll
+}
+
 func (m Model) summaryCard(width, height int) string {
 	summary, ok := m.summaries[m.active]
-	text := "Gathering the last 14 days and generating a summary…"
 	label := "PRIVATE SUMMARY · only you"
 	if ok {
-		text = summary.Text
 		label += fmt.Sprintf(" · %d messages · %s", summary.Messages, summary.Generated.Local().Format("Jan 02 15:04"))
 		if summary.Partial {
 			label += " · PARTIAL"
@@ -159,16 +186,45 @@ func (m Model) summaryCard(width, height int) string {
 			label += " · updating…"
 		}
 	}
-	label += " · S expand / s refresh"
-	text = ansi.Hardwrap(clean(text), max(1, width-4), true)
-	lines := strings.Split(text, "\n")
+	lines := m.summaryLines(max(1, width-4))
 	limit := max(1, height-3)
+	offset := summaryOffset(len(lines), limit, m.summaryPosition())
+	end := min(len(lines), offset+limit)
 	if len(lines) > limit {
-		lines = lines[:limit]
-		lines[limit-1] = ansi.Truncate(lines[limit-1], max(1, width-6), "…") + "…"
+		label += fmt.Sprintf(" · J/K scroll %d-%d of %d", offset+1, end, len(lines))
 	}
-	return m.paneFrame(label, strings.Join(lines, "\n"), width, height, false)
+	label += " · S expand / s refresh / H hide"
+	return m.paneFrame(label, strings.Join(lines[offset:end], "\n"), width, height, false)
 }
+
+// scrollSummary moves the card by delta lines, clamped to its content.
+func (m *Model) scrollSummary(delta int) {
+	height := m.summaryHeight()
+	if height == 0 {
+		m.status = "No private summary to scroll"
+		return
+	}
+	lines := m.summaryLines(max(1, m.viewport.Width()-4))
+	limit := max(1, height-3)
+	m.summaryScroll = summaryOffset(len(lines), limit, m.summaryPosition()+delta)
+	m.summaryScrollFor = m.active
+}
+
+// toggleSummary hides or shows the pinned card; the history pane reclaims or yields the rows.
+func (m *Model) toggleSummary() {
+	if _, ok := m.summaries[m.active]; !ok && !m.summaryBusy[m.active] {
+		m.status = "s generates a private conversation summary"
+		return
+	}
+	m.summaryHidden = !m.summaryHidden
+	if m.summaryHidden {
+		m.status = "Private summary hidden · H shows"
+	} else {
+		m.status = "Private summary shown · J/K scroll"
+	}
+	m.resize()
+}
+
 func (m *Model) expandSummary() {
 	summary, ok := m.summaries[m.active]
 	if !ok {
@@ -180,8 +236,8 @@ func (m *Model) expandSummary() {
 	if summary.Partial {
 		text += " · PARTIAL context"
 	}
-	text += "\nSlack retention may limit coverage.\n\n" + clean(summary.Text)
-	m.summaryViewport.SetContent(ansi.Hardwrap(text, max(1, m.width-4), true))
+	text += "\nSlack retention may limit coverage.\n\n" + strings.ReplaceAll(clean(summary.Text), "**", "*")
+	m.summaryViewport.SetContent(ansi.Wrap(m.renderMarkdown(text), max(1, m.width-4), ""))
 	m.summaryViewport.GotoTop()
 }
 
