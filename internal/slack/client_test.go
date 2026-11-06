@@ -219,3 +219,28 @@ func TestRepliesAndThreadPosting(t *testing.T) {
 		t.Fatal("thread posting failed")
 	}
 }
+
+func TestReactionsAddRemoveAreIdempotent(t *testing.T) {
+	var methods []string
+	c := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		methods = append(methods, strings.TrimPrefix(r.URL.Path, "/"))
+		_ = r.ParseForm()
+		if r.Form.Get("name") != "rocket" || r.Form.Get("timestamp") != "1.1" || r.Form.Get("channel") != "C1" {
+			t.Errorf("bad form %v", r.Form)
+		}
+		if strings.HasSuffix(r.URL.Path, "add") {
+			_, _ = w.Write([]byte(`{"ok":false,"error":"already_reacted"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"ok":false,"error":"no_reaction"}`))
+	})
+	if err := c.AddReaction(context.Background(), "C1", "1.1", "rocket"); err != nil {
+		t.Fatalf("already_reacted should count as success: %v", err)
+	}
+	if err := c.RemoveReaction(context.Background(), "C1", "1.1", "rocket"); err != nil {
+		t.Fatalf("no_reaction should count as success: %v", err)
+	}
+	if len(methods) != 2 || methods[0] != "reactions.add" || methods[1] != "reactions.remove" {
+		t.Fatalf("wrong endpoints %v", methods)
+	}
+}

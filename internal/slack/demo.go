@@ -3,6 +3,7 @@ package slack
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 )
@@ -208,4 +209,54 @@ func (d *Demo) ConversationContext(ctx context.Context, channel string, since, u
 		}
 	}
 	return result, err
+}
+
+// AddReaction and RemoveReaction edit the in-memory demo messages.
+func (d *Demo) AddReaction(_ context.Context, channel, ts, name string) error {
+	d.edit(channel, ts, func(m *Message) {
+		for i := range m.Reactions {
+			if m.Reactions[i].Name == name {
+				if !slices.Contains(m.Reactions[i].Users, "UYOU") {
+					m.Reactions[i].Users = append(m.Reactions[i].Users, "UYOU")
+					m.Reactions[i].Count++
+				}
+				return
+			}
+		}
+		m.Reactions = append(m.Reactions, Reaction{Name: name, Count: 1, Users: []string{"UYOU"}})
+	})
+	return nil
+}
+
+func (d *Demo) RemoveReaction(_ context.Context, channel, ts, name string) error {
+	d.edit(channel, ts, func(m *Message) {
+		for i := range m.Reactions {
+			if m.Reactions[i].Name != name || !slices.Contains(m.Reactions[i].Users, "UYOU") {
+				continue
+			}
+			m.Reactions[i].Users = slices.DeleteFunc(m.Reactions[i].Users, func(u string) bool { return u == "UYOU" })
+			if m.Reactions[i].Count--; m.Reactions[i].Count <= 0 {
+				m.Reactions = slices.Delete(m.Reactions, i, i+1)
+			}
+			return
+		}
+	})
+	return nil
+}
+
+func (d *Demo) edit(channel, ts string, change func(*Message)) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for i := range d.messages[channel] {
+		if d.messages[channel][i].TS == ts {
+			change(&d.messages[channel][i])
+		}
+	}
+	for _, replies := range d.threads {
+		for i := range replies {
+			if replies[i].TS == ts {
+				change(&replies[i])
+			}
+		}
+	}
 }
