@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/WaelRabah/slackline/internal/logs"
 	"io"
 	"net/http"
 	"net/url"
@@ -33,7 +34,12 @@ func NewClient(creds Credentials) *Client {
 	}
 }
 
-func (c *Client) call(ctx context.Context, method string, params url.Values, out any) error {
+func (c *Client) call(ctx context.Context, method string, params url.Values, out any) (err error) {
+	defer func() {
+		if err != nil {
+			logs.Error("slack", fmt.Errorf("%s: %w", method, err))
+		}
+	}()
 	if params == nil {
 		params = url.Values{}
 	}

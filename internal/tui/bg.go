@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"github.com/WaelRabah/slackline/internal/logs"
 	"sort"
 	"strings"
 	"time"
@@ -196,6 +197,7 @@ func (m *Model) applyBG(res bgResult) tea.Cmd {
 	case bgSummary:
 		delete(m.summaryBusy, res.job.channel)
 		if res.err != nil {
+			logs.Error("summary", res.err)
 			m.status = "Private summary failed for " + res.job.label + ": " + cleanLine(res.err.Error())
 			break
 		}
@@ -212,6 +214,9 @@ func (m *Model) applyBG(res bgResult) tea.Cmd {
 		m.unreadSections = mergeSections(m.unreadSections, []unreadSection{res.section})
 		if m.unreadPending > 0 {
 			m.unreadPending--
+		}
+		if res.err != nil || res.section.err != "" {
+			logs.Error("unreads", fmt.Errorf("%s: %v%s", res.job.label, res.err, res.section.err))
 		}
 		if res.err == nil && res.section.err == "" {
 			m.unreadOK = true

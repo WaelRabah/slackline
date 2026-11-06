@@ -2,6 +2,8 @@ package tui
 
 import (
 	"context"
+	"fmt"
+	"github.com/WaelRabah/slackline/internal/logs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -58,6 +60,9 @@ func playSound(ctx context.Context, path string) tea.Cmd {
 		soundCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 		defer cancel()
 		err := exec.CommandContext(soundCtx, "/usr/bin/afplay", path).Run()
+		if err != nil && ctx.Err() == nil {
+			logs.Error("sound", fmt.Errorf("afplay %s: %w", path, err))
+		}
 		return soundDoneMsg{fallback: err != nil && ctx.Err() == nil}
 	}
 }

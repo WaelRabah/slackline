@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/WaelRabah/slackline/internal/logs"
 	"html"
 	"regexp"
 	"slices"
@@ -657,6 +658,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) setError(err error) {
+	logs.Error("ui", err)
 	m.status = cleanLine(err.Error())
 	var limit *slack.RateLimitError
 	if errors.As(err, &limit) {
